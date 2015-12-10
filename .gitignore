@@ -1,0 +1,7 @@
+AdeolaCode/
+Crazyflie\ client/
+MyCode/cache*/
+MyCode/img/
+*.idea
+*.tar.gz
+*.dmg

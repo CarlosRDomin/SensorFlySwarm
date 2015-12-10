@@ -1,0 +1,20 @@
+ [] Install opencv
+	- Execute "sh CONFIGURE_preinstall.sh", changing PYTHON2_PACKAGES_PATH (line 4) to the site-packages location where you want to install opencv
+	- Execute "workon [virtualenv]"
+	- Execute "make -j8"
+	- Execute "sudo make install"
+	- Execute "CONFIGURE_postinstall.sh", to repair the dynamic libraries' relative paths
+
+ [] Install PyQt5:
+	- Download and install Qt5 for Mac (from http://www.qt.io/download/)
+	- Download source from https://riverbankcomputing.com/software/pyqt/download5 and unzip
+	- Copy the attached qgeolocation.h to "QtPositioning/qgeolocation.h"
+	- Execute my script "sh install.sh" (changing the line "workon sensorflyswarm" if you're working on a different virtualenv)
+
+ [] Install sip: [even though they don't tell you, sip is a requirement for PyQtX!!]
+	- Download source from https://riverbankcomputing.com/software/sip/download and unzip
+	- Execute my script "sh install.sh" (changing the line "workon sensorflyswarm" if you're working on a different virtualenv)
+
+ [] Install matplotlib:
+	- Execute "workon [virtualenv]"
+	- Simply execute "pip install matplotlib"
