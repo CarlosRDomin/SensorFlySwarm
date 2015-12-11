@@ -1,20 +1,33 @@
- [] Install opencv
-	- Execute "sh CONFIGURE_preinstall.sh", changing PYTHON2_PACKAGES_PATH (line 4) to the site-packages location where you want to install opencv
-	- Execute "workon [virtualenv]"
-	- Execute "make -j8"
-	- Execute "sudo make install"
-	- Execute "CONFIGURE_postinstall.sh", to repair the dynamic libraries' relative paths
+ [] Install Qt5
+	- Download the open-source version of Qt5 from http://www.qt.io/download/
+	- Follow the steps provided (execute the .dmg file). Sample installation location: /Library/MyBuilds/Qt5/
 
  [] Install PyQt5:
-	- Download and install Qt5 for Mac (from http://www.qt.io/download/)
 	- Download source from https://riverbankcomputing.com/software/pyqt/download5 and unzip
-	- Copy the attached qgeolocation.h to "QtPositioning/qgeolocation.h"
-	- Execute my script "sh install.sh" (changing the line "workon sensorflyswarm" if you're working on a different virtualenv)
+	- Execute my script "sh install.sh" (changing the line "workon sensorflyswarm" if you're working on a different virtualenv, and the "python configure.py --qmake=[...]" line to point to the right installation of Qt5's qmake)
+	- If build fails, copy the attached qgeolocation.h to "QtPositioning/qgeolocation.h"
 
  [] Install sip: [even though they don't tell you, sip is a requirement for PyQtX!!]
 	- Download source from https://riverbankcomputing.com/software/sip/download and unzip
 	- Execute my script "sh install.sh" (changing the line "workon sensorflyswarm" if you're working on a different virtualenv)
 
+ [] Install opencv (additional help here: http://www.pyimagesearch.com/2015/06/15/install-opencv-3-0-and-python-2-7-on-osx/):
+	- Open a terminal in the folder you want OpenCV to be downloaded to (eg. "cd /Library/MyBuilds/")
+	- Execute "git clone https://github.com/Itseez/opencv"
+	- Execute "git clone https://github.com/Itseez/opencv_contrib"
+	- Execute "cd opencv; mkdir build; cd build"
+	- Execute "sh CONFIGURE_preinstall.sh", changing "workon sensorflyswarm" (line 3) to the virtualenv you want opencv to be installed in, and setting QMAKE_CMAKE_LIB_PATH (line 4) to the "lib/cmake" folder of your Qt5 installation path. Note: As of Dec/10/2015, WITH_FFMPEG and modules world, contrib_world and ximgproc from opencv_contrib raise errors when compiling/making, so I disabled them on the script.
+	- Execute "sudo make -j8 install". Note: There might be an error while making: "build/modules/python2/pyopencv_generated_types.h:21542:5: error: unknown type name 'vector_Rect2d'; did you mean 'vector_Rect'?", which is solved by replacing the file "modules/python/src2/cv2.cpp" with the version I provide
+	- Execute "CONFIGURE_postinstall.sh", to repair the dynamic libraries' relative paths
+
  [] Install matplotlib:
 	- Execute "workon [virtualenv]"
 	- Simply execute "pip install matplotlib"
+
+---------------------------------------------------------------------------------
+
+	VERY IMPORTANT NOTE: If, when calling any opencv method that uses the GUI (e.g., imshow), you get an error saying
+		"This application failed to start because it could not find or load the Qt platform plugin 'cocoa'.
+		Available platform plugins are: cocoa, minimal, offscreen.
+		Reinstalling the application may fix this problem.",
+	the solution is to go to the folder "/Library/MyBuilds/Qt5/5.5/clang_64/plugins/platforms" and execute the command "install_name_tool -add_rpath /Library/MyBuilds/Qt5/5.5/clang_64/lib libqcocoa.dylib" (replace "/Library/MyBuilds/Qt5/5.5/clang_64/lib" by the folder that contains all the "QtXXX.framework", if you installed Qt5 somewhere else)
