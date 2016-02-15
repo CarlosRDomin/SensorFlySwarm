@@ -1,7 +1,9 @@
 AdeolaCode/
-Crazyflie\ client/
+Crazyflie*
 MyCode/cache*/
 MyCode/img/
+MyCode/log/
 *.idea
 *.tar.gz
 *.dmg
+*.pyc

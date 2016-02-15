@@ -1,5 +1,7 @@
 #!/usr/bin/python
 #
+# Original version downloaded from: https://github.com/ivmech/ivPID/blob/master/PID.py
+#
 # This file is part of IvPID.
 # Copyright (C) 2015 Ivmech Mechatronics Ltd. <bilgi@ivmech.com>
 #
@@ -34,30 +36,33 @@ class PID:
     """PID Controller
     """
 
-    def __init__(self, P=0.2, I=0.0, D=0.0):
-
+    def __init__(self, P=1, I=1, D=0.001, offs=0, out_upper_bound=float('Inf'), out_lower_bound=False, invert_error=False, error_in_degrees=False, error_max=float('Inf'), I_max=20.0, is_interval_const=False):
         self.Kp = P
         self.Ki = I
         self.Kd = D
 
+        self.SetPoint = 0.0
+        self.out_offs = offs
+        self.setMaxMV(out_upper_bound, out_lower_bound)
+        self.invert_error = invert_error
+        self.error_in_degrees = error_in_degrees
+        self.error_max = error_max
+        self.I_max = I_max
+
         self.sample_time = 0.00
         self.current_time = time.time()
         self.last_time = self.current_time
+        self.is_interval_const = is_interval_const
 
         self.clear()
 
     def clear(self):
         """Clears PID computations and coefficients"""
-        self.SetPoint = 0.0
-
         self.PTerm = 0.0
         self.ITerm = 0.0
         self.DTerm = 0.0
         self.last_error = 0.0
-
-        # Windup Guard
-        self.int_error = 0.0
-        self.windup_guard = 20.0
+        self.clearing = True
 
         self.output = 0.0
 
@@ -74,8 +79,22 @@ class PID:
 
         """
         error = self.SetPoint - feedback_value
+        if self.invert_error: error = -error
+        if self.error_in_degrees:
+            error %= 360
+            if error > 180: error -= 360  # Back to (-180, 180] range
+        if error < -self.error_max:
+            error = -self.error_max
+        elif error > self.error_max:
+            error = self.error_max
+        if self.clearing:  # If the method clear() was just called, force delta_error=0 and delta_time=0
+            self.last_error = error
+            self.last_time = time.time()
+            self.clearing = False
 
         self.current_time = time.time()
+        if self.is_interval_const:
+            self.current_time = self.last_time + self.sample_time + 0.01  # Add 0.01 so delta_time is never 0 (not even if sample_time=0), so that D component is not always 0
         delta_time = self.current_time - self.last_time
         delta_error = error - self.last_error
 
@@ -83,10 +102,10 @@ class PID:
             self.PTerm = self.Kp * error
             self.ITerm += error * delta_time
 
-            if (self.ITerm < -self.windup_guard):
-                self.ITerm = -self.windup_guard
-            elif (self.ITerm > self.windup_guard):
-                self.ITerm = self.windup_guard
+            if (self.ITerm < -self.I_max):
+                self.ITerm = -self.I_max
+            elif (self.ITerm > self.I_max):
+                self.ITerm = self.I_max
 
             self.DTerm = 0.0
             if delta_time > 0:
@@ -97,6 +116,11 @@ class PID:
             self.last_error = error
 
             self.output = self.PTerm + (self.Ki * self.ITerm) + (self.Kd * self.DTerm)
+            if self.output < self.out_min:
+                self.output = self.out_min
+            elif self.output > self.out_max:
+                self.output = self.out_max
+            self.output += self.out_offs
 
     def setKp(self, proportional_gain):
         """Determines how aggressively the PID reacts to the current error with setting Proportional Gain"""
@@ -110,7 +134,11 @@ class PID:
         """Determines how aggressively the PID reacts to the current error with setting Derivative Gain"""
         self.Kd = derivative_gain
 
-    def setWindup(self, windup):
+    def setOffset(self, offset):
+        """Determines the desired output value that holds the process value (PV) stable at the SetPoint (ie, error=0)"""
+        self.out_offs = offset
+
+    def setWindup(self, I_max):
         """Integral windup, also known as integrator windup or reset windup,
         refers to the situation in a PID feedback controller where
         a large change in setpoint occurs (say a positive change)
@@ -120,7 +148,17 @@ class PID:
         (offset by errors in the other direction).
         The specific problem is the excess overshooting.
         """
-        self.windup_guard = windup
+        self.I_max = I_max
+
+    def setMaxMV(self, upper_bound, lower_bound=False):
+        """Sets the maximum and minimum values of the Manipulated Variable (MV or output).
+        If lower_bound is bool, the minimum value is set to -upper_bound.
+        Otherwise, the value of lower_bound is taken as in (eg, float)"""
+        self.out_max = upper_bound
+        if isinstance(lower_bound, bool):
+            self.out_min = -upper_bound
+        else:
+            self.out_min = lower_bound
 
     def setSampleTime(self, sample_time):
         """PID that should be updated at a regular interval.

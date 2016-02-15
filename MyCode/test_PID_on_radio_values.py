@@ -5,6 +5,7 @@ from threading import Thread
 import time
 import cv2
 from datetime import datetime, timedelta
+import PID
 
 sys.path.insert(0, "../Crazyflie client/lib")
 from cflib.crazyflie import Crazyflie
@@ -18,9 +19,13 @@ class Hover:
         self.m_bShuttingDown = False
         self.m_CrazyFlie = None
         self.m_bConnected = False
+        self.str_status = "TAKING OFF"
         self.m_roll = 0
         self.m_pitch = 0
         self.m_yaw = 0
+        self.m_PID_roll = PID.PID(P=1, I=2, D=0.01, offs=0, out_upper_bound=20)
+        self.m_PID_pitch = PID.PID(P=1, I=2, D=0.01, offs=0, out_upper_bound=20, invert_error=True)
+        self.m_PID_yaw = PID.PID(P=0.5, I=0.3, D=0.01, offs=0, out_upper_bound=20, invert_error=True, error_in_degrees=True)
 
     def Run(self):
         logging.basicConfig()
@@ -62,11 +67,6 @@ class Hover:
             return
 
         try:
-            # while not self.m_bShuttingDown:
-            #     if self.m_bConnected:
-            #         self.hover(True)
-            #     else:
-            #         time.sleep(0.1)
             thread1 = Thread(target=self.hover, args=())
             thread1.start()
             self.show_cam()
@@ -87,30 +87,46 @@ class Hover:
         self.m_roll = data['stabilizer.roll']
         self.m_pitch = data['stabilizer.pitch']
         self.m_yaw = data['stabilizer.yaw']
+        # self.m_PID_roll.update(self.m_roll)
+        # self.m_PID_pitch.update(self.m_pitch)
+        # self.m_PID_yaw.update(self.m_yaw)
         # print "\r@t={}\troll: {:6.2f}\tpitch: {:6.2f}\tyaw: {:6.2f}\n".format(datetime.now().strftime("%H:%M:%S.%f")[:-3], self.m_roll, self.m_pitch, self.m_yaw),
 
     def hover(self):
         time.sleep(2)
 
-        roll = 7
-        pitch = 8
+        roll = 8
+        pitch = 10
         yawrate = 0
-        thrust = 43500
-        for cnt in range(0, 20):
+        thrust = 45000
+        for cnt in range(0, 10):
             if self.m_bShuttingDown: break  # Allow aborting take-off too (otherwise a key press would not stop the drone until take-off phase was completed)
             self.m_CrazyFlie.commander.send_setpoint(roll, pitch, yawrate, thrust)
             time.sleep(0.1)
 
         print "AT t={}, DONE TAKING OFF!".format(datetime.now().strftime("%H:%M:%S.%f")[:-3])
+        self.str_status = "FLYING (yaw = {:+6.2f})".format(self.m_yaw)
+        self.m_PID_roll.clear()
+        self.m_PID_pitch.clear()
+        self.m_PID_yaw.clear()
+        self.m_PID_roll.SetPoint = 0
+        self.m_PID_pitch.SetPoint = 0
+        self.m_PID_yaw.SetPoint = self.m_yaw
 
         while not self.m_bShuttingDown:
-            roll = 7
-            pitch = 8
-            yawrate = 0
-            thrust = 43500
+            self.m_PID_roll.update(self.m_roll)
+            self.m_PID_pitch.update(self.m_pitch)
+            self.m_PID_yaw.update(self.m_yaw)
+            roll = self.m_PID_roll.output
+            pitch = self.m_PID_pitch.output
+            yawrate = self.m_PID_yaw.output
+            thrust = 44750
             self.m_CrazyFlie.commander.send_setpoint(roll, pitch, yawrate, thrust)
-            time.sleep(0.1)
+            time.sleep(0.05)
 
+        self.m_PID_roll.output = 0
+        self.m_PID_pitch.output = 0
+        self.m_PID_yaw.output = 0
         self.m_CrazyFlie.commander.send_setpoint(0, 0, 0, 0)
         print "AT t={}, COMPLETELY STOPPED THE DRONE!".format(datetime.now().strftime("%H:%M:%S.%f")[:-3])
 
@@ -138,14 +154,36 @@ class Hover:
             t = datetime.now()
             ret, frame = video_capture.read()
             if ret:
-                cv2.putText(frame, "roll: {:+6.2f}; pitch: {:+6.2f}; yaw: {:+6.2f}".format(self.m_roll, self.m_pitch, self.m_yaw), (25, frame.shape[0]-50), cv2.FONT_HERSHEY_DUPLEX, 0.7, (20,20,200), 1, cv2.LINE_AA)
-                cv2.putText(frame, "@t={}".format(t.strftime("%H:%M:%S.%f")[:-3]), (25, frame.shape[0]-25), cv2.FONT_HERSHEY_DUPLEX, 0.7, (20,20,200), 1, cv2.LINE_AA)
+                strPrint = ("ROLL.. => SP:{:+3.0f}; Curr:{:+7.2f}; Sent:{:+6.2f} [P={:+6.2f}, I={:+6.2f}, D={:+6.2f}]\t\t" + \
+                        "PITCH. => SP:{:+3.0f}; Curr:{:+7.2f}; Sent:{:+6.2f} [P={:+6.2f}, I={:+6.2f}, D={:+6.2f}]\t\t" + \
+                        "YAW..  => SP:{:+3.0f}; Curr:{:+7.2f}; Sent:{:+6.2f} [P={:+6.2f}, I={:+6.2f}, D={:+6.2f}]\t\t" + \
+                        "@{} - " + self.str_status).format(
+                               self.m_PID_roll.SetPoint, self.m_roll, self.m_PID_roll.output, self.m_PID_roll.PTerm, self.m_PID_roll.Ki * self.m_PID_roll.ITerm, self.m_PID_roll.Kd * self.m_PID_roll.DTerm,
+                               self.m_PID_pitch.SetPoint, self.m_pitch, self.m_PID_pitch.output, self.m_PID_pitch.PTerm, self.m_PID_pitch.Ki * self.m_PID_pitch.ITerm, self.m_PID_pitch.Kd * self.m_PID_pitch.DTerm,
+                               self.m_PID_yaw.SetPoint, self.m_yaw, self.m_PID_yaw.output, self.m_PID_yaw.PTerm, self.m_PID_yaw.Ki * self.m_PID_yaw.ITerm, self.m_PID_yaw.Kd * self.m_PID_yaw.DTerm,
+                               t.strftime("%H:%M:%S.%f")[:-3])
+                cnt = 0
+                for s in strPrint.split('\t\t'):
+                    cv2.putText(frame, s, (25, frame.shape[0]+25*(cnt-1-strPrint.count('\t\t'))), cv2.FONT_HERSHEY_DUPLEX, 0.7, (20,20,200), 1, cv2.LINE_AA)
+                    cnt += 1
                 cv2.imshow('Video', frame)
                 cv2.imwrite(os.path.join(video_folder, t.strftime("out_%H-%M-%S-%f.jpg")), frame)
-                print "@t={}; roll: {:+6.2f}; pitch: {:+6.2f}; yaw: {:+6.2f}; New camera frame :D".format(t.strftime("%H:%M:%S.%f")[:-3], self.m_roll, self.m_pitch, self.m_yaw)
-            if cv2.waitKey(1) > 0:
-                tStop = t + timedelta(seconds=2)
-                self.m_bShuttingDown = True
-                print "AT t={}, A KEY WAS PRESSED -> STOPPING!".format(t.strftime("%H:%M:%S.%f")[:-3])
+                print strPrint
+            keyCode = cv2.waitKey(1)
+            if keyCode > 0:
+                keyCode = chr(keyCode).lower()
+                if keyCode == 'a':
+                    self.m_PID_roll.SetPoint -= 1
+                elif keyCode == 's':
+                    self.m_PID_pitch.SetPoint += 1
+                elif keyCode == 'd':
+                    self.m_PID_roll.SetPoint += 1
+                elif keyCode == 'w':
+                    self.m_PID_pitch.SetPoint -= 1
+                else:
+                    tStop = t + timedelta(seconds=2)
+                    self.m_bShuttingDown = True
+                    print "AT t={}, A KEY WAS PRESSED -> STOPPING!".format(t.strftime("%H:%M:%S.%f")[:-3])
+                    self.str_status = "STOPPED"
 
 Hover().Run()

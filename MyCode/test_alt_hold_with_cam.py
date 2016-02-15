@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 from operator import attrgetter
 import PID
-
+import plot_tools
 
 sys.path.insert(0, "../Crazyflie client/build/lib")
 from cflib.crazyflie import Crazyflie
@@ -27,27 +27,29 @@ class Hover:
         self.m_bConnecting = True
         self.m_bConnected = False
         self.m_CrazyFlie = None
+        self.m_ask_for_target_yaw = False
+        self.m_log_control_data = plot_tools.OverallControlLog()
         self.m_log_stab = None
         self.m_roll = 0
         self.m_pitch = 0
         self.m_yaw = 0
         self.m_str_status = "TAKING OFF"
+        self.m_t_start = datetime.now()
         self.m_video_capture = cv2.VideoCapture()
         self.m_video_size = (0, 0)
         self.m_video_folder = "img"
         self.m_figure_name = "Output"
         self.m_imshow_out = None
         self.m_drone_detector = self.init_detector_params()
-        self.m_drone_has_never_been_tracked = True
         self.m_drone_pos_tracked = False
         self.m_drone_last_pos = np.array([0, 0])
         self.m_drone_curr_pos = np.array([0, 0])
         self.m_drone_target_pos = np.array([0, 0])
-        self.m_drone_target_yaw = 0
-        self.m_PID_roll = PID.PID(P=1/50., I=0.05, D=0.01, offs=7, out_upper_bound=5, invert_error=True)
-        self.m_PID_pitch = PID.PID(P=0, I=0.05, D=0.01, offs=8, out_upper_bound=0)
-        self.m_PID_yaw = PID.PID(P=0.5, I=0.1, D=0.01, offs=0, out_upper_bound=8, invert_error=True, error_in_degrees=True)
-        self.m_PID_thrust = PID.PID(P=4, I=0.5, D=0.1, offs=43500, out_upper_bound=1000, invert_error=True)
+        self.m_PID_roll = PID.PID(P=1, I=2, D=0.01, offs=0, out_upper_bound=20)
+        self.m_PID_pitch = PID.PID(P=1, I=2, D=0.01, offs=0, out_upper_bound=20, invert_error=True)
+        self.m_PID_yaw = PID.PID(P=0.5, I=0.3, D=0.01, offs=0, out_upper_bound=20, invert_error=True, error_in_degrees=True)
+        self.m_PID_thrust = PID.PID(P=10, I=10, D=0.1, offs=44000, out_upper_bound=5000, error_max=50, invert_error=True)
+        self.m_PID_thrust.setWindup(8000./self.m_PID_thrust.Ki)
 
     def init_detector_params(self):
         detector_params = cv2.SimpleBlobDetector_Params()
@@ -162,8 +164,12 @@ class Hover:
             except AttributeError:
                 raise Exception("Couldn't add Stabilizer log config, bad configuration.")
 
-            raw_input("\nRotate the drone so it faces the camera, press Enter when you're ready...\n")
-            self.m_drone_target_yaw = self.m_yaw
+            if self.m_ask_for_target_yaw:
+                raw_input("\nRotate the drone so it faces the camera, press Enter when you're ready...\n")
+            else:
+                while abs(self.m_yaw) < 0.01:
+                    time.sleep(0.1)  # Wait until first m_yaw value is received
+            self.m_PID_yaw.SetPoint = self.m_yaw
             print "Target yaw set at %.2f." % self.m_yaw
 
             self.init_video_cam()
@@ -171,24 +177,32 @@ class Hover:
             # Also take an image from the background, for background substraction
             _, frame = self.m_video_capture.read()
             cv2.imshow(self.m_figure_name, frame)
-            cv2.waitKey(10000)  # Give 10 sec to prepare for take-off
+            cv2.waitKey(5000)  # Give 10 sec to prepare for take-off
 
             # t = Timer(20, self.m_CrazyFlie.close_link)  # Start a timer to disconnect in 10s
             # t.start()
 
-            cnt = 0
-            while cnt < 5:  # x 100ms
-                cnt += 1
-                self.m_CrazyFlie.commander.send_setpoint(7, 9, 0, 44000)
-                if cv2.waitKey(100) > 0:
-                    raise Exception("KeyboardInterrupt")
+            # cnt = 0
+            # while cnt < 5:  # x 100ms
+            #     cnt += 1
+            #     self.m_CrazyFlie.commander.send_setpoint(8, 10, 0, 46000)
+            #     if cv2.waitKey(100) > 0:
+            #         raise Exception("KeyboardInterrupt")
 
             self.m_str_status = "FLYING"
+            self.m_t_start = datetime.now()
+            self.m_PID_roll.clear()
+            self.m_PID_pitch.clear()
+            self.m_PID_yaw.clear()
+            self.m_PID_thrust.clear()
+
             tStop = None
             while tStop is None:
                 tStop = self.hover()
+
             print "AT t={}, A KEY WAS PRESSED -> STOPPING!".format(datetime.now().strftime("%H:%M:%S.%f")[:-3])
             self.m_str_status = "STOPPED"
+
             while datetime.now() < tStop:
                 self.hover()
 
@@ -199,6 +213,7 @@ class Hover:
         self.m_CrazyFlie.close_link()
         self.m_video_capture.release()
         cv2.destroyAllWindows()
+        self.m_log_control_data.plot()
 
     def on_connected(self, linkUri):
         logging.info("Successfully connected to Crazyflie at '%s'!" % linkUri)
@@ -244,12 +259,6 @@ class Hover:
         print "\rCurrent yaw: %.2fdeg" % self.m_yaw,
 
     def hover(self, sendCommand=True, saveImg=True):
-        self.m_PID_pitch.SetPoint = 0
-        # self.m_video_capture.set(cv2.CAP_PROP_EXPOSURE, 100)
-        # self.m_video_capture.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0)
-        # self.m_video_capture.set(cv2.CAP_PROP_IRIS, 10)
-        # self.m_video_capture.set(cv2.CAP_PROP_SATURATION, 10)
-        # print str(self.m_video_capture.get(cv2.CAP_PROP_EXPOSURE)) + ";\t" + str(self.m_video_capture.get(cv2.CAP_PROP_AUTO_EXPOSURE)) + ";\t" + str(self.m_video_capture.get(cv2.CAP_PROP_IRIS)) + ";\t" + str(self.m_video_capture.get(cv2.CAP_PROP_SATURATION))
         ret, frame = self.m_video_capture.read()
         if not ret:
             logging.error("Unexpected error accessing the camera frame :(")
@@ -267,23 +276,11 @@ class Hover:
             if keypoints:
                 keypoint = max(keypoints, key=attrgetter('size'))   # Keep only the biggest blob
                 mask_with_keypoints = cv2.drawKeypoints(mask, [keypoint], np.array([]), (0,0,255), cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-                if self.m_drone_has_never_been_tracked:
-                    self.m_PID_roll.clear()
-                    self.m_PID_pitch.clear()
-                    self.m_PID_yaw.clear()
-                    self.m_PID_thrust.clear()
-                    self.m_PID_thrust.setWindup(250/self.m_PID_thrust.Ki)
-                    # self.m_PID_pitch.setWindup(abs(self.m_PID_pitch.SetPoint)/self.m_PID_pitch.Ki)
-                    self.m_PID_roll.setWindup(3./self.m_PID_roll.Ki)
-                    self.m_drone_has_never_been_tracked = False
-                    print "AT t={}, DRONE WAS TRACKED FOR THE FIRST TIME".format(datetime.now().strftime("%H:%M:%S.%f")[:-3])
             else:
                 mask_with_keypoints = mask3
                 speed = [max(min(x, 100), -100) for x in (self.m_drone_curr_pos - self.m_drone_last_pos)]  # Limit max speed (we know it's not faster than 100 px/frame
                 keypoint = type('', (), {'pt': self.m_drone_curr_pos + speed, 'size': 40})
 
-            self.m_PID_roll.SetPoint = self.m_drone_target_pos[0]
-            self.m_PID_yaw.SetPoint = self.m_drone_target_yaw
             self.m_PID_thrust.SetPoint = self.m_drone_target_pos[1]
 
             self.m_drone_pos_tracked = bool(keypoints)
@@ -293,30 +290,38 @@ class Hover:
             cv2.line(mask_with_keypoints, tuple(self.m_drone_curr_pos.astype(int)), tuple(self.m_drone_target_pos), self.COLOR_LINE_TRACKED if self.m_drone_pos_tracked else self.COLOR_LINE_UNTRACKED, 10)
             cv2.circle(mask_with_keypoints, tuple(self.m_drone_target_pos), 25, self.COLOR_TARGET_TRACKED if self.m_drone_pos_tracked else self.COLOR_TARGET_UNTRACKED, -1)  # Plot circle at desired drone location
 
-            self.m_PID_roll.update(self.m_drone_curr_pos[0])  # Probably all PID values need to be negative
-            self.m_PID_pitch.update(0)
-            # send_yaw = (self.m_PIDs["yaw_offs"] + self.m_yaw-self.m_drone_target_yaw) % 360
-            # if send_yaw > 180: send_yaw -= 360  # Back to (-180, 180] range
+            # self.m_PID_roll.update(self.m_drone_curr_pos[0])
+            # self.m_PID_pitch.update(0)
+            # self.m_PID_yaw.update(self.m_yaw)
+            self.m_PID_roll.update(self.m_roll)
+            self.m_PID_pitch.update(self.m_pitch)
             self.m_PID_yaw.update(self.m_yaw)
             self.m_PID_thrust.update(self.m_drone_curr_pos[1])
+
             if sendCommand:
                 if self.m_bConnected:
                     self.m_CrazyFlie.commander.send_setpoint(self.m_PID_roll.output, self.m_PID_pitch.output, self.m_PID_yaw.output, self.m_PID_thrust.output)
                 else:
                     self.m_CrazyFlie.commander.send_setpoint(0, 0, 0, 0)
+                    self.m_PID_roll.clear(); self.m_PID_pitch.clear(); self.m_PID_yaw.clear(); self.m_PID_thrust.clear()
 
             t = datetime.now()
-            strPrint = ("ROLL.. ={:+6.2f} [P={:+6.2f}, I={:+6.2f}, D={:+6.2f}]\t\t" + \
-                        "PITCH. ={:+6.2f} [P={:+6.2f}, I={:+6.2f}, D={:+6.2f}]\t\t" + \
-                        "YAW..  ={:+6.2f} [P={:+6.2f}, I={:+6.2f}, D={:+6.2f}]\t\t" + \
-                        "THRUST={:6.0f} [P={:+6.0f}, I={:+6.0f}, D={:+6.2f}]\t\t" + \
-                        "pos=[x:{:4.0f}, y:{:4.0f}, rpy: {:+6.2f},{:+6.2f},{:+6.2f}]\t\t@{} - " + self.m_str_status).format(
-                               self.m_PID_roll.output, self.m_PID_roll.PTerm, self.m_PID_roll.Ki * self.m_PID_roll.ITerm, self.m_PID_roll.Kd * self.m_PID_roll.DTerm,
-                               self.m_PID_pitch.output, self.m_PID_pitch.PTerm, self.m_PID_pitch.Ki * self.m_PID_pitch.ITerm, self.m_PID_pitch.Kd * self.m_PID_pitch.DTerm,
-                               self.m_PID_yaw.output, self.m_PID_yaw.PTerm, self.m_PID_yaw.Ki * self.m_PID_yaw.ITerm, self.m_PID_yaw.Kd * self.m_PID_yaw.DTerm,
-                               self.m_PID_thrust.output, self.m_PID_thrust.PTerm, self.m_PID_thrust.Ki * self.m_PID_thrust.ITerm, self.m_PID_thrust.Kd * self.m_PID_thrust.DTerm,
-                               self.m_drone_curr_pos[0], self.m_drone_curr_pos[1], self.m_roll, self.m_pitch, self.m_yaw, t.strftime("%H:%M:%S.%f")[:-3])
+            formatNum = "{:+6.2f}"
+            strPrint = ("ROLL.. ={:+3.0f};" + formatNum + " [" + formatNum + "," + formatNum + "," + formatNum + "]\t\t" +
+                        "PITCH. ={:+3.0f};" + formatNum + " [" + formatNum + "," + formatNum + "," + formatNum + "]\t\t" +
+                        "YAW..  ={:+3.0f};" + formatNum + " [" + formatNum + "," + formatNum + "," + formatNum + "]\t\t" +
+                        "THRUST={:3.0f};{:6.0f} [{:+6.0f}, {:+6.0f}, {:+6.0f}]\t\t" +
+                        "pos=[x:{:4.0f}, y:{:4.0f}, rpy: " + formatNum + "," + formatNum + "," + formatNum + "]\t\t" +
+                        "@{} - " + self.m_str_status).format(
+                               self.m_PID_roll.SetPoint, self.m_PID_roll.output, self.m_PID_roll.PTerm, self.m_PID_roll.Ki * self.m_PID_roll.ITerm, self.m_PID_roll.Kd * self.m_PID_roll.DTerm,
+                               self.m_PID_pitch.SetPoint, self.m_PID_pitch.output, self.m_PID_pitch.PTerm, self.m_PID_pitch.Ki * self.m_PID_pitch.ITerm, self.m_PID_pitch.Kd * self.m_PID_pitch.DTerm,
+                               self.m_PID_yaw.SetPoint, self.m_PID_yaw.output, self.m_PID_yaw.PTerm, self.m_PID_yaw.Ki * self.m_PID_yaw.ITerm, self.m_PID_yaw.Kd * self.m_PID_yaw.DTerm,
+                               self.m_PID_thrust.SetPoint, self.m_PID_thrust.output, self.m_PID_thrust.PTerm, self.m_PID_thrust.Ki * self.m_PID_thrust.ITerm, self.m_PID_thrust.Kd * self.m_PID_thrust.DTerm,
+                               self.m_drone_curr_pos[0], self.m_drone_curr_pos[1], self.m_roll, self.m_pitch, self.m_yaw, str(t-self.m_t_start)[3:-3])  # t.strftime("%H:%M:%S.%f")[:-3])
             print "Sent: \t" + strPrint
+            strPrint = "          SP | SENT  [   P   ,   I   ,   D  ]\t\t" + strPrint
+
+            self.m_log_control_data.update(self.m_roll, self.m_PID_roll, self.m_pitch, self.m_PID_pitch, self.m_yaw, self.m_PID_yaw, self.m_drone_curr_pos[1], self.m_PID_thrust, t-self.m_t_start)
 
             self.m_imshow_out = cv2.resize(np.vstack((frame, mask_with_keypoints)), None, fx=0.5, fy=0.5)
             np.putmask(frame, mask3==255, [0, 255, 0])
@@ -330,11 +335,22 @@ class Hover:
             if saveImg:
                 cv2.imwrite(os.path.join(self.m_video_folder, t.strftime("out_%H-%M-%S-%f.jpg")), out)
 
-            self.m_bConnected &= (cv2.waitKey(1) <= 0)
-            if self.m_bConnected:
-                return None
-            else:
-                return datetime.now() + timedelta(seconds=2)
+            keyCode = cv2.waitKey(1)
+            if keyCode > 0:
+                keyCode = chr(keyCode).lower()
+                if keyCode == 'a':
+                    self.m_PID_roll.SetPoint -= 1
+                elif keyCode == 's':
+                    self.m_PID_pitch.SetPoint += 1
+                elif keyCode == 'd':
+                    self.m_PID_roll.SetPoint += 1
+                elif keyCode == 'w':
+                    self.m_PID_pitch.SetPoint -= 1
+                else:
+                    self.m_bConnected = False
+                    return datetime.now() + timedelta(seconds=2)
+
+            return None
 
 
 if __name__ == '__main__':
