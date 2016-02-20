@@ -26,6 +26,10 @@
 #dependencies    : matplotlib, numpy, scipy
 #==============================================================================
 
+"""
+    Simple script to test the class PID implemented in PID.py
+"""
+
 import PID
 import time
 import matplotlib.pyplot as plt
@@ -48,7 +52,7 @@ def test_pid(P = 0.2,  I = 0.0, D= 0.0, L=100):
         ---
     """
     pid = PID.PID(P, I, D, is_interval_const=False)
-    pid.setMaxMV(0.5)
+    pid.setOutMax(0.5)
 
     pid.SetPoint=0.0
     pid.setSampleTime(0.01)

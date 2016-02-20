@@ -1,3 +1,7 @@
+"""
+    Computer-Vision part of the system. This file is used for testing the drone detection algorithm using the camera.
+"""
+
 import cv2
 import numpy as np
 from operator import attrgetter

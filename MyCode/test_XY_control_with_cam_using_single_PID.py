@@ -1,3 +1,10 @@
+"""
+    Old code that tried to control XY position of the drone using a single (and independent) PID loop
+    for each coordinate, whose feedback value is the current x or y coordinate found by the camera,
+    and output was roll or thrust to the drone. Yaw and roll were kept at their set points by additional
+    PID loops whose input was the yaw or pitch obtained via radio from the drone's gyros and accels.
+"""
+
 import logging
 import time
 from datetime import datetime, timedelta
@@ -44,10 +51,10 @@ class Hover:
         self.m_drone_curr_pos = np.array([0, 0])
         self.m_drone_target_pos = np.array([0, 0])
         self.m_drone_target_yaw = 0
-        self.m_PID_roll = PID.PID(P=1/50., I=0.05, D=0.01, offs=7, out_upper_bound=5, invert_error=True)
-        self.m_PID_pitch = PID.PID(P=0, I=0.05, D=0.01, offs=8, out_upper_bound=0)
-        self.m_PID_yaw = PID.PID(P=0.5, I=0.1, D=0.01, offs=0, out_upper_bound=8, invert_error=True, error_in_degrees=True)
-        self.m_PID_thrust = PID.PID(P=4, I=0.5, D=0.1, offs=43500, out_upper_bound=1000, invert_error=True)
+        self.m_PID_roll = PID.PID(P=1/50., I=0.05, D=0.01, offs=7, out_max=5, invert_error=True)
+        self.m_PID_pitch = PID.PID(P=0, I=0.05, D=0.01, offs=8, out_max=0)
+        self.m_PID_yaw = PID.PID(P=0.5, I=0.1, D=0.01, offs=0, out_max=8, invert_error=True, error_in_degrees=True)
+        self.m_PID_thrust = PID.PID(P=4, I=0.5, D=0.1, offs=43500, out_max=1000, invert_error=True)
 
     def init_detector_params(self):
         detector_params = cv2.SimpleBlobDetector_Params()
@@ -272,9 +279,9 @@ class Hover:
                     self.m_PID_pitch.clear()
                     self.m_PID_yaw.clear()
                     self.m_PID_thrust.clear()
-                    self.m_PID_thrust.setWindup(250/self.m_PID_thrust.Ki)
+                    self.m_PID_thrust.setImax(250 / self.m_PID_thrust.Ki)
                     # self.m_PID_pitch.setWindup(abs(self.m_PID_pitch.SetPoint)/self.m_PID_pitch.Ki)
-                    self.m_PID_roll.setWindup(3./self.m_PID_roll.Ki)
+                    self.m_PID_roll.setImax(3. / self.m_PID_roll.Ki)
                     self.m_drone_has_never_been_tracked = False
                     print "AT t={}, DRONE WAS TRACKED FOR THE FIRST TIME".format(datetime.now().strftime("%H:%M:%S.%f")[:-3])
             else:

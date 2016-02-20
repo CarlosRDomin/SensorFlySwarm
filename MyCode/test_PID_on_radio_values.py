@@ -1,3 +1,9 @@
+"""
+    Simple script that provides constant thrust to the drone, and controls roll, pitch and yaw using independent
+    PID loops, whose input is the drone's roll, pitch and yaw, measured from its accels&gyros and sent via radio.
+    ASDW keys can be used to modify the PID set points, basically acting like a joystick/remote controller.
+"""
+
 import logging
 import os
 import sys
@@ -23,9 +29,9 @@ class Hover:
         self.m_roll = 0
         self.m_pitch = 0
         self.m_yaw = 0
-        self.m_PID_roll = PID.PID(P=1, I=2, D=0.01, offs=0, out_upper_bound=20)
-        self.m_PID_pitch = PID.PID(P=1, I=2, D=0.01, offs=0, out_upper_bound=20, invert_error=True)
-        self.m_PID_yaw = PID.PID(P=0.5, I=0.3, D=0.01, offs=0, out_upper_bound=20, invert_error=True, error_in_degrees=True)
+        self.m_PID_roll = PID.PID(P=1, I=2, D=0.01, offs=0, out_max=20)
+        self.m_PID_pitch = PID.PID(P=1, I=2, D=0.01, offs=0, out_max=20, invert_error=True)
+        self.m_PID_yaw = PID.PID(P=0.5, I=0.3, D=0.01, offs=0, out_max=20, invert_error=True, error_in_degrees=True)
 
     def Run(self):
         logging.basicConfig()

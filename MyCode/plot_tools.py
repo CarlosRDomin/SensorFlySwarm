@@ -1,3 +1,9 @@
+"""
+    Tools designed to facilitate logging (and plotting afterwards) all info related to a PID (or PIV) loop:
+    setpoint, measured value, P/I/D terms, output value... as a function of time.
+    Also allows to save the figure to a file.
+"""
+
 from datetime import datetime, timedelta
 import numpy as np
 import matplotlib.pyplot as plt
@@ -5,6 +11,7 @@ import matplotlib.dates as mdates
 
 class MagnitudeControlLog:
     def __init__(self, str_magnitude="", pid_offset=0):
+        self.lst_timestamp = []
         self.lst_setpoint = []
         self.lst_measured = []
         self.lst_out_P = []
@@ -14,11 +21,15 @@ class MagnitudeControlLog:
         self.str_magnitude = str_magnitude
 
     def clear(self):
+        self.lst_timestamp = []
         self.lst_setpoint = []
         self.lst_measured = []
         self.lst_out_P = []
         self.lst_out_I = []
         self.lst_out_D = []
+
+    def get_timestamp(self):
+        return np.array(self.lst_timestamp)
 
     def get_setpoint(self):
         return np.array(self.lst_setpoint)
@@ -35,44 +46,48 @@ class MagnitudeControlLog:
     def get_out_D(self):
         return np.array(self.lst_out_D)
 
-    def update(self, measured, pid):
+    def update(self, pid, timestamp=None):
+        if timestamp is None: timestamp = pid.curr_time
         self.pid_offset = pid.out_offs
-        if self.str_magnitude.lower() == "thrust":
-            self.update_long(-pid.SetPoint, -measured, pid.PTerm, pid.Ki * pid.ITerm, pid.Kd * pid.DTerm)
+        if self.str_magnitude.lower().startswith("thrust"):
+            self.update_long(-pid.SetPoint, -pid.curr_input, pid.PTerm, pid.Ki * pid.ITerm, pid.Kd * pid.DTerm, timestamp)
         elif pid.invert_error:
-            self.update_long(pid.SetPoint, measured, -pid.PTerm, -pid.Ki * pid.ITerm, -pid.Kd * pid.DTerm)
+            self.update_long(pid.SetPoint, pid.curr_input, -pid.PTerm, -pid.Ki * pid.ITerm, -pid.Kd * pid.DTerm, timestamp)
         else:
-            self.update_long(pid.SetPoint, measured, pid.PTerm, pid.Ki * pid.ITerm, pid.Kd * pid.DTerm)
+            self.update_long(pid.SetPoint, pid.curr_input, pid.PTerm, pid.Ki * pid.ITerm, pid.Kd * pid.DTerm, timestamp)
 
-    def update_long(self, setpoint, measured, out_P, out_I, out_D):
+    def update_long(self, setpoint, measured, out_P, out_I, out_D, timestamp=None):
         self.lst_setpoint.append(setpoint)
         self.lst_measured.append(measured)
         self.lst_out_P.append(out_P)
         self.lst_out_I.append(out_I)
         self.lst_out_D.append(out_D)
+        if timestamp is None:
+            self.lst_timestamp.append(datetime.now())
+        elif isinstance(timestamp, timedelta):  # Can't plot a timedelta axis, so add today's date to convert them to datetime (so we can plot them)
+            self.lst_timestamp.append(timestamp + datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
+        else:
+            self.lst_timestamp.append(timestamp)
 
-    def plot(self, timestamp=None):
+    def plot(self):
         if len(self.lst_measured) < 1:
             return None
-        if timestamp is None:
-            timestamp = [timedelta(seconds=i) for i in range(0, len(self.lst_measured))]
-        timestamp = np.array(timestamp)
-        if isinstance(timestamp[0], timedelta):
-            timestamp += datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        if len(self.lst_timestamp) < 1:
+            self.lst_timestamp = [timedelta(seconds=i) for i in range(0, len(self.lst_measured))]
 
         fig, ax1 = plt.subplots()
-        ax1.plot(timestamp, self.get_setpoint(), 'r--', label=self.str_magnitude + ' SetPoint', linewidth=1.5)
-        ax1.plot(timestamp, self.get_measured(), 'b', label=self.str_magnitude + ' measured', linewidth=2)
-        ax1.set_xlim((min(timestamp), max(timestamp)))
+        ax1.plot(self.get_timestamp(), self.get_setpoint(), 'r--', label=self.str_magnitude + ' SetPoint', linewidth=1.5)
+        ax1.plot(self.get_timestamp(), self.get_measured(), 'b', label=self.str_magnitude + ' measured', linewidth=2)
+        ax1.set_xlim((min(self.get_timestamp()), max(self.get_timestamp())))
 
         ax2 = ax1.twinx()
-        ax2.plot(timestamp, self.pid_offset + self.get_out_P()+self.get_out_I()+self.get_out_D(), 'g', label=self.str_magnitude + ' PID output', linewidth=2)
-        ax2.plot(timestamp, self.pid_offset + self.get_out_P(), 'm', label=self.str_magnitude + ' P component', linewidth=1)
-        ax2.plot(timestamp, self.pid_offset + self.get_out_I(), 'c', label=self.str_magnitude + ' I component', linewidth=1)
-        ax2.plot(timestamp, self.pid_offset + self.get_out_D(), 'k', label=self.str_magnitude + ' D component', linewidth=1)
+        ax2.plot(self.get_timestamp(), self.pid_offset + self.get_out_P()+self.get_out_I()+self.get_out_D(), 'g', label=self.str_magnitude + ' PID output', linewidth=2)
+        ax2.plot(self.get_timestamp(), self.pid_offset + self.get_out_P(), 'm', label=self.str_magnitude + ' P component', linewidth=1)
+        ax2.plot(self.get_timestamp(), self.pid_offset + self.get_out_I(), 'c', label=self.str_magnitude + ' I component', linewidth=1)
+        ax2.plot(self.get_timestamp(), self.pid_offset + self.get_out_D(), 'k', label=self.str_magnitude + ' D component', linewidth=1)
         ax2.set_xlim(ax1.get_xlim())
 
-        if self.str_magnitude.lower() != "thrust":
+        if not self.str_magnitude.lower().startswith("thrust"):
             ax1_ylim = ax1.get_ylim()
             ax2_ylim = ax2.get_ylim()
             ax1.set_ylim((min(ax1_ylim[0], ax2_ylim[0]), max(ax1_ylim[1], ax2_ylim[1])))
@@ -102,47 +117,55 @@ class MagnitudeControlLog:
 
 class OverallControlLog:
     def __init__(self):
-        self.roll = MagnitudeControlLog("Roll")
+        self.roll_pos = MagnitudeControlLog("Roll_pos")
+        self.roll_vel = MagnitudeControlLog("Roll_vel")
         self.pitch = MagnitudeControlLog("Pitch")
         self.yaw = MagnitudeControlLog("Yaw")
-        self.thrust = MagnitudeControlLog("Thrust")
-        self.lst_timestamp = []
+        self.thrust_pos = MagnitudeControlLog("Thrust_pos")
+        self.thrust_vel = MagnitudeControlLog("Thrust_vel")
 
     def clear(self):
-        self.roll.clear()
+        self.roll_pos.clear()
+        self.roll_vel.clear()
         self.pitch.clear()
         self.yaw.clear()
-        self.thrust.clear()
-        self.lst_timestamp = []
+        self.thrust_pos.clear()
+        self.thrust_vel.clear()
 
-    def update(self, roll_measured, roll_PID, pitch_measured, pitch_PID, yaw_measured, yaw_PID, thrust_measured, thrust_PID, timestamp=None):
-        if timestamp is None:
-            timestamp = datetime.now()
-        self.lst_timestamp.append(timestamp)
-        self.roll.update(roll_measured, roll_PID)
-        self.pitch.update(pitch_measured, pitch_PID)
-        self.yaw.update(yaw_measured, yaw_PID)
-        self.thrust.update(thrust_measured, thrust_PID)
+    def update(self, roll_PID, pitch_PID, yaw_PID, thrust_PID, timestamp=None):
+        if roll_PID is not None:
+            self.roll_pos.update(roll_PID.PIDpos, timestamp)
+            self.roll_vel.update(roll_PID.PIDvel, timestamp)
+        if pitch_PID is not None:
+            self.pitch.update(pitch_PID, timestamp)
+        if yaw_PID is not None:
+            self.yaw.update(yaw_PID, timestamp)
+        if thrust_PID is not None:
+            self.thrust_pos.update(thrust_PID.PIDpos, timestamp)
+            self.thrust_vel.update(thrust_PID.PIDvel, timestamp)
 
-    def update_long(self, roll_setpoint, roll_measured, roll_out_P, roll_out_I, roll_out_D,
+    def update_long(self, roll_pos_setpoint, roll_pos_measured, roll_pos_out_P, roll_pos_out_I, roll_pos_out_D,
+                    roll_vel_setpoint, roll_vel_measured, roll_vel_out_P, roll_vel_out_I, roll_vel_out_D,
                     pitch_setpoint, pitch_measured, pitch_out_P, pitch_out_I, pitch_out_D,
                     yaw_setpoint, yaw_measured, yaw_out_P, yaw_out_I, yaw_out_D,
-                    thrust_setpoint, thrust_measured, thrust_out_P, thrust_out_I, thrust_out_D, timestamp=None):
-        if timestamp is None:
-            timestamp = datetime.now()
-        self.lst_timestamp.append(timestamp)
-        self.roll.update_long(roll_setpoint, roll_measured, roll_out_P, roll_out_I, roll_out_D)
-        self.pitch.update_long(pitch_setpoint, pitch_measured, pitch_out_P, pitch_out_I, pitch_out_D)
-        self.yaw.update_long(yaw_setpoint, yaw_measured, yaw_out_P, yaw_out_I, yaw_out_D)
-        self.thrust.update_long(thrust_setpoint, thrust_measured, thrust_out_P, thrust_out_I, thrust_out_D)
+                    thrust_pos_setpoint, thrust_pos_measured, thrust_pos_out_P, thrust_pos_out_I, thrust_pos_out_D,
+                    thrust_vel_setpoint, thrust_vel_measured, thrust_vel_out_P, thrust_vel_out_I, thrust_vel_out_D, timestamp=None):
+        self.roll_pos.update_long(roll_pos_setpoint, roll_pos_measured, roll_pos_out_P, roll_pos_out_I, roll_pos_out_D, timestamp)
+        self.roll_vel.update_long(roll_vel_setpoint, roll_vel_measured, roll_vel_out_P, roll_vel_out_I, roll_vel_out_D, timestamp)
+        self.pitch.update_long(pitch_setpoint, pitch_measured, pitch_out_P, pitch_out_I, pitch_out_D, timestamp)
+        self.yaw.update_long(yaw_setpoint, yaw_measured, yaw_out_P, yaw_out_I, yaw_out_D, timestamp)
+        self.thrust_pos.update_long(thrust_pos_setpoint, thrust_pos_measured, thrust_pos_out_P, thrust_pos_out_I, thrust_pos_out_D, timestamp)
+        self.thrust_vel.update_long(thrust_vel_setpoint, thrust_vel_measured, thrust_vel_out_P, thrust_vel_out_I, thrust_vel_out_D, timestamp)
 
     def plot(self, wait=True):
-        self.roll.plot(self.lst_timestamp)
-        self.pitch.plot(self.lst_timestamp)
-        self.yaw.plot(self.lst_timestamp)
-        self.thrust.plot(self.lst_timestamp)
+        self.roll_pos.plot()
+        self.roll_vel.plot()
+        self.pitch.plot()
+        self.yaw.plot()
+        self.thrust_pos.plot()
+        self.thrust_vel.plot()
         if wait:
-            plt.waitforbuttonpress()
+            while not plt.waitforbuttonpress(): pass  # Wait until a key is pressed (waitforbuttonpress will return True if a key was pressed, False if the mouse was clicked)
 
 
 if __name__ == '__main__':

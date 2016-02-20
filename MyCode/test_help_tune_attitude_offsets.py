@@ -1,3 +1,9 @@
+"""
+    Old code used to test different offset values for roll, pitch, yaw and base(=hover) thrust. At the same time,
+    it is used to test that the camera functionality (connecting to the camera, grabbing and displaying frames,
+    writing text on images or saving images to the hard drive) and comms to the drone are working as expected.
+"""
+
 import logging
 import os
 import sys
@@ -56,10 +62,8 @@ class Hover:
             self.m_log_stab.start()
         except KeyError as e:
             raise Exception("Couldn't start log configuration, %s not found in TOC!" % str(e))
-            return
         except AttributeError:
             raise Exception("Couldn't add Stabilizer log config, bad configuration.")
-            return
 
         try:
             # while not self.m_bShuttingDown:
@@ -148,4 +152,5 @@ class Hover:
                 self.m_bShuttingDown = True
                 print "AT t={}, A KEY WAS PRESSED -> STOPPING!".format(t.strftime("%H:%M:%S.%f")[:-3])
 
-Hover().Run()
+if __name__ == "__main__":
+    Hover().Run()

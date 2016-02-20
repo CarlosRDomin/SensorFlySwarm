@@ -1,3 +1,7 @@
+"""
+    Very basic script that uses OpenCV to list all available cameras.
+"""
+
 import cv2
 
 video_capture = cv2.VideoCapture()
