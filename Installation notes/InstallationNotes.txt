@@ -31,3 +31,25 @@
 		Available platform plugins are: cocoa, minimal, offscreen.
 		Reinstalling the application may fix this problem.",
 	the solution is to go to the folder "/Library/MyBuilds/Qt5/5.5/clang_64/plugins/platforms" and execute the command "install_name_tool -add_rpath /Library/MyBuilds/Qt5/5.5/clang_64/lib libqcocoa.dylib" (replace "/Library/MyBuilds/Qt5/5.5/clang_64/lib" by the folder that contains all the "QtXXX.framework", if you installed Qt5 somewhere else)
+
+---------------------------------------------------------------------------------
+
+2/26/2016:
+	Might be much easier to install everything through Homebrew:
+		- brew install qt qt5 matplotlib
+		- If desired, brew install any other dependencies (eg python, python3, numpy, scipy, ffmpeg, etc.). If there are any missing that opencv requires they'll be automatically installed, so it shouldn't be an issue
+		- Then just execute "brew install opencv3 --with-contrib --with-ffmpeg --with-gphoto2 --with-gstreamer --with-jasper --with-libdc1394 --with-opengl --with-openni2 --with-python3 --with-qt5 --with-tbb --with-vtk"
+
+		- OPTIONAL (Alternative to last command): Execute "export EDITOR=nano; brew edit opencv3" (could also use a better editor like 'export EDITOR=/Applications/Atom.app/Contents/MacOS/Atom')
+			+ In line 37 (between with-opengl and with-quicktime) add this line:
+				option "with-avfoundation", "Use AVFoundation for Video I/O instead of QTKit"
+			+ Replace line 123 (or the one that starts with 'args << "-DWITH_QUICKTIME="...) by these 2 lines:
+				args << "-DWITH_AVFOUNDATION=" + arg_switch("avfoundation")
+				args << "-DWITH_QUICKTIME=" + (build.with?("avfoundation") ? "OFF" : arg_switch("quicktime"))
+		- Execute "brew install opencv" so it downloads the file /Library/Caches/Homebrew/opencv3-3.1.0.tar.gz. Stop the progress once this file has been downloaded (by pressing Ctrl+C).
+		- Open file opencv-3.1.0/CMakeLists.txt and change the end of line 165 from "IF IOS )" to "IF IOS OR APPLE)"
+		- Open file opencv-3.1.0/cmake/OpenCVFindLibsVideo.cmake and change the end of line 318 from "AND CMAKE_COMPILER_IS_CLANGCXX)" to "AND CMAKE_COMPILER_IS_CLANGCXX AND (NOT HAVE_AVFOUNDATION))"
+		- Open file opencv-3.1.0/modules/videoio/CMakeLists.txt and change line 170 to 'list(APPEND VIDEOIO_LIBRARIES "-framework Accelerate" "-framework AVFoundation" "-framework CoreGraphics" "-framework CoreMedia" "-framework CoreVideo" "-framework QuartzCore" "-framework Foundation" "-framework CoreFoundation")'
+		- Execute "cd /Library/Caches/Homebrew/; tar -cvzf opencv3-3.1.0.tar.gz opencv-3.1.0/*"
+		- Execute "export EDITOR=nano; brew edit opencv3" and replace the expected sha256 of opencv3-3.1.0.tar.gz (line 8) by the output of "shasum -a 256 opencv3-3.1.0.tar.gz"
+		- Finally execute "brew install -v opencv3 --with-contrib --with-ffmpeg --with-gphoto2 --with-gstreamer --with-jasper --with-libdc1394 --with-qt5 --with-avfoundation --with-tbb"

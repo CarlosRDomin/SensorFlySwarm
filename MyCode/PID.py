@@ -213,4 +213,5 @@ class PIDposAndVel:
 
     def getCurrVel(self):
         inv_factor = -1 if self.invert_vel else 1
-        return min(self.max_vel, max(-self.max_vel, inv_factor*(self.PIDpos.curr_input-self.PIDpos.last_input)/(self.PIDpos.curr_time-self.PIDpos.last_time).total_seconds()))
+        delta_time = (self.PIDpos.curr_time - self.PIDpos.last_time).total_seconds()
+        return min(self.max_vel, max(-self.max_vel, inv_factor*(self.PIDpos.curr_input-self.PIDpos.last_input)/delta_time)) if delta_time>0 else 0

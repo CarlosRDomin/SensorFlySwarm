@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import os
 
 
-def find_FPS(cam_id=0, test_len=5.0, saveimg=False, saveimgFolder="fps_test"):
+def find_FPS(cam_id=0, test_len=10.0, saveimg=False, saveimgFolder="fps_test"):
     video_capture = cv2.VideoCapture(cam_id)
 
     fps = video_capture.get(cv2.CAP_PROP_FPS)
@@ -38,9 +38,10 @@ def find_FPS(cam_id=0, test_len=5.0, saveimg=False, saveimgFolder="fps_test"):
 
         tt = datetime.now()
         # imgDiffPx = np.any(frame != last_frame, 2)
-        imgDiffPx = (frame == last_frame)
-        nDiffPx = np.sum(imgDiffPx)
+        nDiffPx = 1
         if saveimg:
+            imgDiffPx = (frame == last_frame)
+            nDiffPx = np.sum(imgDiffPx)
             cv2.imwrite(os.path.join(saveimgFolder, t.strftime("frame_%H-%M-%S-%f.jpg")), frame)
             cv2.imwrite(os.path.join(saveimgFolder, t.strftime("diff_%H-%M-%S-%f.jpg")), imgDiffPx.astype(np.uint8)*255)
         if nDiffPx > 0:

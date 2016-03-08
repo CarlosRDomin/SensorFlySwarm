@@ -57,17 +57,10 @@ class Hover:
         self.m_imshow_out = None
         self.DRONE_DETECTOR_PARAMS = self.init_detector_params()
         self.m_drone_pos_tracked = False
-        ## self.m_drone_last_pos = np.array([0, 0])
-        ## self.m_drone_curr_pos = np.array([0, 0])
-        ## self.m_drone_target_pos = np.array([0, 0])
-        ## self.m_drone_curr_vel = np.array([0, 0])
-        ## self.m_PID_roll = PID.PID(P=1, I=2, D=0.01, offs=3, out_max=20)
         self.m_PID_roll = PID.PIDposAndVel(posP=0.5, velP=0.007, velI=0.02, vel_offs=5, pos_out_max=300, vel_out_max=30, vel_invert_error=True)
         self.m_PID_pitch = PID.PID(P=1, I=2, D=0.01, offs=10, out_max=20, invert_error=True)
         self.m_PID_yaw = PID.PID(P=0.5, I=0.3, D=0, offs=0, out_max=20, invert_error=True, error_in_degrees=True)
         self.m_PID_thrust = PID.PIDposAndVel(posP=1, velP=45, velI=15, vel_offs=45000, pos_out_max=300, vel_out_max=5000, pos_invert_error=True, vel_invert_input=True)
-        ## self.m_PID_thrust_pos = PID.PID(P=1, I=0, D=0, offs=0, out_max=500, invert_error=True)
-        ## self.m_PID_thrust_vel = PID.PID(P=40, I=15, D=0, offs=45000, out_max=5000, I_max=5000)
 
     def init_detector_params(self):
         detector_params = cv2.SimpleBlobDetector_Params()
@@ -109,9 +102,6 @@ class Hover:
             self.m_video_size = (int(self.m_video_capture.get(cv2.CAP_PROP_FRAME_WIDTH)), int(self.m_video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT)))
             self.m_PID_roll.setSetPoint(self.m_video_size[0]/2)
             self.m_PID_thrust.setSetPoint(self.m_video_size[1]/2)
-            ## self.m_drone_target_pos = (np.array(self.m_video_size)/2).astype(int)
-            ## self.m_drone_curr_pos = self.m_drone_target_pos  # Initialize drone's position at target position so PID loop doesn't go crazy at the beginning
-            ## self.m_drone_last_pos = self.m_drone_curr_pos
             cv2.namedWindow(self.FIGURE_NAME)
             cv2.setMouseCallback(self.FIGURE_NAME, self.on_mouse_callback)
             cv2.moveWindow(self.FIGURE_NAME, 200, 200)
@@ -149,90 +139,82 @@ class Hover:
         self.m_CrazyFlie.connection_lost.add_callback(self.on_connection_lost)
         self.m_CrazyFlie.open_link(linkUri)
 
-        # try:
-        cnt = 0
-        while self.m_bConnecting:
-            cnt += 1
-            # if cnt >= 20:
-            #     raise Exception("Connection to Crazyflie timed out, unable to establish a useful link after 20sec.")
-            # if cnt % 20 == 0:
-            #     logging.warning("Unable to establish a connection with Crazyflie (%s) after 20 sec. Retrying..." % linkUri)
-            #     self.m_CrazyFlie.close_link()
-            #     self.m_bConnecting = True
-            #     self.m_CrazyFlie.open_link(linkUri)
-            time.sleep(1)
-
-        if not self.m_bConnected:
-            print "Something failed while attempting to connect to the drone, exiting."
-            return
-
-        # Can't initialize LogConfig until we're connected, because it needs to check that the variables we'd like to add are in the TOC
-        self.m_log_stab = LogConfig(name="Stabilizer", period_in_ms=10)
-        self.m_log_stab.add_variable("stabilizer.roll", "float")
-        self.m_log_stab.add_variable("stabilizer.pitch", "float")
-        self.m_log_stab.add_variable("stabilizer.yaw", "float")
-
         try:
-            self.m_CrazyFlie.param.set_value("ring.effect", "0")  # Turn off LED ring
-            self.m_CrazyFlie.param.set_value("ring.headlightEnable", "0")  # Turn off LED ring
-            self.m_CrazyFlie.log.add_config(self.m_log_stab)
-            self.m_log_stab.data_received_cb.add_callback(self.log_stabilizer_data)
-            self.m_log_stab.error_cb.add_callback(self.log_stabilizer_error)
-            self.m_log_stab.start()
-        except KeyError as e:
-            raise Exception("Couldn't start log configuration, %s not found in TOC!" % str(e))
-        except AttributeError:
-            raise Exception("Couldn't add Stabilizer log config, bad configuration.")
+            cnt = 0
+            while self.m_bConnecting:
+                cnt += 1
+                # if cnt >= 20:
+                #     raise Exception("Connection to Crazyflie timed out, unable to establish a useful link after 20sec.")
+                # if cnt % 20 == 0:
+                #     logging.warning("Unable to establish a connection with Crazyflie (%s) after 20 sec. Retrying..." % linkUri)
+                #     self.m_CrazyFlie.close_link()
+                #     self.m_bConnecting = True
+                #     self.m_CrazyFlie.open_link(linkUri)
+                time.sleep(1)
 
-        if self.ASK_FOR_TARGET_YAW:
-            raw_input("\nRotate the drone so it faces the camera, press Enter when you're ready...\n")
-        else:
-            while abs(self.m_yaw) < 0.01:
-                time.sleep(0.1)  # Wait until first m_yaw value is received
-        self.m_PID_yaw.SetPoint = self.m_yaw
-        print "Target yaw set at %.2f." % self.m_yaw
+            if not self.m_bConnected:
+                print "Something failed while attempting to connect to the drone, exiting."
+                return
 
-        self.init_video_cam()
+            # Can't initialize LogConfig until we're connected, because it needs to check that the variables we'd like to add are in the TOC
+            self.m_log_stab = LogConfig(name="Stabilizer", period_in_ms=10)
+            self.m_log_stab.add_variable("stabilizer.roll", "float")
+            self.m_log_stab.add_variable("stabilizer.pitch", "float")
+            self.m_log_stab.add_variable("stabilizer.yaw", "float")
 
-        # Also take an image from the background, for background substraction
-        _, frame = self.m_video_capture.read()
-        cv2.imshow(self.FIGURE_NAME, frame)
-        cv2.waitKey(5000)  # Give 10 sec to prepare for take-off
+            try:
+                self.m_CrazyFlie.param.set_value("ring.effect", "0")  # Turn off LED ring
+                self.m_CrazyFlie.param.set_value("ring.headlightEnable", "0")  # Turn off LED ring
+                self.m_CrazyFlie.log.add_config(self.m_log_stab)
+                self.m_log_stab.data_received_cb.add_callback(self.log_stabilizer_data)
+                self.m_log_stab.error_cb.add_callback(self.log_stabilizer_error)
+                self.m_log_stab.start()
+            except KeyError as e:
+                raise Exception("Couldn't start log configuration, %s not found in TOC!" % str(e))
+            except AttributeError:
+                raise Exception("Couldn't add Stabilizer log config, bad configuration.")
 
-        # t = Timer(20, self.m_CrazyFlie.close_link)  # Start a timer to disconnect in 10s
-        # t.start()
+            if self.ASK_FOR_TARGET_YAW:
+                raw_input("\nRotate the drone so it faces the camera, press Enter when you're ready...\n")
+            else:
+                while abs(self.m_yaw) < 0.01:
+                    time.sleep(0.1)  # Wait until first m_yaw value is received
+            self.m_PID_yaw.SetPoint = self.m_yaw
+            print "Target yaw set at %.2f." % self.m_yaw
 
-        # cnt = 0
-        # while cnt < 5:  # x 100ms
-        #     cnt += 1
-        #     self.m_CrazyFlie.commander.send_setpoint(8, 10, 0, 46000)
-        #     if cv2.waitKey(100) > 0:
-        #         raise Exception("KeyboardInterrupt")
+            self.init_video_cam()
 
-        self.m_str_status = "TAKING OFF"
-        self.m_t_start = datetime.now()
-        self.m_PID_roll.clear()
-        self.m_PID_pitch.clear()
-        self.m_PID_yaw.clear()
-        self.m_PID_thrust.clear()
-        ## self.m_PID_thrust_pos.clear()
-        ## self.m_PID_thrust_vel.clear()
+            # Also take an image from the background, for background substraction
+            _, frame = self.m_video_capture.read()
+            cv2.imshow(self.FIGURE_NAME, frame)
+            cv2.waitKey(5000)  # Give 10 sec to prepare for take-off
 
-        tStop = None
-        while tStop is None:
-            tStop = self.hover()
+            # t = Timer(20, self.m_CrazyFlie.close_link)  # Start a timer to disconnect in 10s
+            # t.start()
 
-        print "AT t={}, A KEY WAS PRESSED -> STOPPING!".format(datetime.now().strftime("%H:%M:%S.%f")[:-3])
-        self.m_str_status = "STOPPED"
+            self.m_str_status = "TAKING OFF"
+            self.m_t_start = datetime.now()
+            self.m_PID_roll.clear()
+            self.m_PID_pitch.clear()
+            self.m_PID_yaw.clear()
+            self.m_PID_thrust.clear()
 
-        while datetime.now() < tStop:
-            self.hover()
+            tStop = None
+            while tStop is None:
+                tStop = self.hover()
 
-        self.m_CrazyFlie.commander.send_setpoint(0, 0, 0, 0)
+            print "AT t={}, A KEY WAS PRESSED -> STOPPING!".format(datetime.now().strftime("%H:%M:%S.%f")[:-3])
+            self.m_str_status = "STOPPED"
 
-        # except Exception as e:
-        #     exc_type, exc_obj, exc_tb = sys.exc_info()
-        #     logging.error("Shutting down due to an exception -> %s: %s (at %s:%d)." % (str(exc_type), str(e), os.path.split(exc_tb.tb_frame.f_code.co_filename)[1], exc_tb.tb_lineno))
+            while datetime.now() < tStop:
+                self.hover()
+
+            self.m_CrazyFlie.commander.send_setpoint(0, 0, 0, 0)
+
+        except Exception as e:
+            logging.exception(" Shutting down due to an exception =( See details below:")
+            # exc_type, exc_obj, exc_tb = sys.exc_info()
+            # logging.error("Shutting down due to an exception -> %s: %s (at %s:%d)." % (str(exc_type), str(e), os.path.split(exc_tb.tb_frame.f_code.co_filename)[1], exc_tb.tb_lineno))
         self.m_CrazyFlie.close_link()
         self.m_video_capture.release()
         cv2.destroyAllWindows()
@@ -305,25 +287,18 @@ class Hover:
             mask_with_keypoints = mask3
             keypoint = type('', (), {'pt': np.array([self.m_PID_roll.getCurrPos(), self.m_PID_thrust.getCurrPos()]) +
                                            np.array([self.m_PID_roll.getCurrVel(), -self.m_PID_thrust.getCurrVel()])*(t-self.m_PID_thrust.PIDvel.curr_time).total_seconds(), 'size': 40})  # Since PIDs haven't been updated with current values yet, don't have to multiply velocity by (curr_time-last_time) but rather by (t-curr_time)
-            ## keypoint = type('', (), {'pt': self.m_drone_curr_pos + self.m_drone_curr_vel*(t-self.m_t_last_frame).total_seconds(), 'size': 40})
 
         self.m_drone_pos_tracked = bool(keypoints)
-        ##self.m_drone_last_pos = self.m_drone_curr_pos  # Save current position as "last position"
         drone_curr_pos = np.array(keypoint.pt)  # And update current position based on the CV algorithm output
         drone_target_pos = tuple(int(round(x)) for x in [self.m_PID_roll.getSetPoint(), self.m_PID_thrust.getSetPoint()])
-        ## self.m_drone_curr_vel = np.array([max(min(x, 50), -50)/(t-self.m_t_last_frame).total_seconds() for x in (self.m_drone_curr_pos - self.m_drone_last_pos)])  # Limit max speed (we know it's not faster than 50 px/frame
         cv2.circle(mask_with_keypoints, tuple(drone_curr_pos.astype(int)), int(round(keypoint.size/2)), self.COLOR_BALL_TRACKED if self.m_drone_pos_tracked else self.COLOR_BALL_UNTRACKED, -1)
         cv2.line(mask_with_keypoints, tuple(drone_curr_pos.astype(int)), drone_target_pos, self.COLOR_LINE_TRACKED if self.m_drone_pos_tracked else self.COLOR_LINE_UNTRACKED, 10)
         cv2.circle(mask_with_keypoints, drone_target_pos, 25, self.COLOR_TARGET_TRACKED if self.m_drone_pos_tracked else self.COLOR_TARGET_UNTRACKED, -1)  # Plot circle at desired drone location
 
-        ## self.m_PID_roll.update(self.m_roll)
         self.m_PID_roll.update(drone_curr_pos[0], t)
         self.m_PID_pitch.update(self.m_pitch, t)
         self.m_PID_yaw.update(self.m_yaw, t)
         self.m_PID_thrust.update(drone_curr_pos[1], t)
-        ## self.m_PID_thrust_pos.SetPoint = self.m_drone_target_pos[1]
-        ## self.m_PID_thrust_vel.SetPoint = self.m_PID_thrust_pos.update(self.m_drone_curr_pos[1])
-        ## self.m_PID_thrust_vel.update(-self.m_drone_curr_vel[1])
 
         if sendCommand:
             if self.m_bConnected:
@@ -333,7 +308,7 @@ class Hover:
                     self.m_CrazyFlie.commander.send_setpoint(self.m_PID_roll.getOutput(), self.m_PID_pitch.output, self.m_PID_yaw.output, self.m_PID_thrust.getOutput())
             else:
                 self.m_CrazyFlie.commander.send_setpoint(0, 0, 0, 0)
-                self.m_PID_roll.clear(); self.m_PID_pitch.clear(); self.m_PID_yaw.clear(); self.m_PID_thrust.clear()  ## self.m_PID_thrust_pos.clear(); self.m_PID_thrust_vel.clear()
+                self.m_PID_roll.clear(); self.m_PID_pitch.clear(); self.m_PID_yaw.clear(); self.m_PID_thrust.clear()
 
         formatNum = "{:+6.2f}"
         strPrint = ("ROLLp. ={:+3.0f};" + formatNum + " [" + formatNum + "," + formatNum + "," + formatNum + "]\t\t" +
@@ -350,9 +325,6 @@ class Hover:
             self.m_PID_yaw.SetPoint, self.m_PID_yaw.output, self.m_PID_yaw.PTerm, self.m_PID_yaw.Ki * self.m_PID_yaw.ITerm, self.m_PID_yaw.Kd * self.m_PID_yaw.DTerm,
             self.m_PID_thrust.PIDpos.SetPoint, self.m_PID_thrust.PIDpos.output, self.m_PID_thrust.PIDpos.PTerm, self.m_PID_thrust.PIDpos.Ki*self.m_PID_thrust.PIDpos.ITerm, self.m_PID_thrust.PIDpos.Kd*self.m_PID_thrust.PIDpos.DTerm,
             self.m_PID_thrust.PIDvel.SetPoint, self.m_PID_thrust.PIDvel.output, self.m_PID_thrust.PIDvel.PTerm, self.m_PID_thrust.PIDvel.Ki*self.m_PID_thrust.PIDvel.ITerm, self.m_PID_thrust.PIDvel.Kd*self.m_PID_thrust.PIDvel.DTerm,
-            ## self.m_PID_thrust_pos.SetPoint, self.m_PID_thrust_pos.output, self.m_PID_thrust_pos.PTerm, self.m_PID_thrust_pos.Ki * self.m_PID_thrust_pos.ITerm, self.m_PID_thrust_pos.Kd * self.m_PID_thrust_pos.DTerm,
-            ## self.m_PID_thrust_vel.SetPoint, self.m_PID_thrust_vel.output, self.m_PID_thrust_vel.PTerm, self.m_PID_thrust_vel.Ki * self.m_PID_thrust_vel.ITerm, self.m_PID_thrust_vel.Kd * self.m_PID_thrust_vel.DTerm,
-            ## self.m_drone_curr_pos[0], self.m_drone_curr_pos[1], self.m_drone_curr_vel[0], -self.m_drone_curr_vel[1], self.m_roll, self.m_pitch, self.m_yaw,
             self.m_PID_roll.getCurrPos(), self.m_PID_thrust.getCurrPos(), self.m_PID_roll.getCurrVel(), self.m_PID_thrust.getCurrVel(), self.m_roll, self.m_pitch, self.m_yaw,
             str(t-self.m_t_start)[3:-3], 1./(t-self.m_t_last_frame).total_seconds())
         # print "Sent: \t" + strPrint
@@ -369,13 +341,15 @@ class Hover:
         for s in strPrint.split('\t\t'):
             cv2.putText(out, s.replace('\t', '; '), (25, out.shape[0]+25*(cnt-1-strPrint.count('\t\t'))), cv2.FONT_HERSHEY_DUPLEX, 0.7, (200,200,200), 1, cv2.LINE_AA)
             cnt += 1
-        cv2.imshow(self.FIGURE_NAME, out)
+
+        if not sendCommand:  # Only display the images if in CV-only mode, otherwise I'm looking at the drone so who cares if the image is shown live, I'll look at the (saved) individual frames later
+            cv2.imshow(self.FIGURE_NAME, out)
         if saveImg:
             cv2.imwrite(os.path.join(self.VIDEO_FOLDER, t.strftime("out_%H-%M-%S-%f.jpg")), out)
 
         # tt = datetime.now()
         keyCode = cv2.waitKey(1)
-        # print "DeltaT = {:5.4f}s -> FPS: {:7.2f}\tTotal FPS: {:5.2f}".format((datetime.now()-tt).total_seconds(), 1./(datetime.now()-tt).total_seconds(), 1./(t-self.m_t_last_frame).total_seconds())
+        # print "\t\t\t\t\t\t\t\t\t\t\t\tDeltaT = {:5.4f}s\tTotal FPS: {:5.2f}".format((datetime.now()-tt).total_seconds(), 1./(t-self.m_t_last_frame).total_seconds())
 
         if keyCode > 0:
             keyCode = chr(keyCode).lower()
@@ -394,9 +368,6 @@ class Hover:
                 self.m_PID_thrust.setSetPoint(self.m_PID_thrust.getCurrPos())
                 self.m_PID_roll.clear()
                 self.m_PID_thrust.clear()
-                ## self.m_drone_target_pos = self.m_drone_curr_pos.astype(int)
-                ## self.m_PID_thrust.setSetPoint(self.m_drone_target_pos[1])
-                ## self.m_PID_thrust_pos.clear(); self.m_PID_thrust_vel.clear()
             else:
                 self.m_bConnected = False
                 return datetime.now() + timedelta(seconds=2)
@@ -410,7 +381,7 @@ class Hover:
 
 if __name__ == '__main__':
     sendCommands = True
-    # sendCommands = False
+    sendCommands = False
     if sendCommands:
         Hover().run()
     else:
