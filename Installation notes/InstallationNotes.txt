@@ -35,12 +35,44 @@
 ---------------------------------------------------------------------------------
 
 2/26/2016:
-	Might be much easier to install everything through Homebrew:
-		- brew install qt qt5 matplotlib
+	Might be MUUUUCH EASIER to install everything through Homebrew:
+		- brew install qt qt5 matplotlib (perhaps do brew info qt qt5... first to see if you want to set any of the extra flags, eg: --with-python3)
 		- If desired, brew install any other dependencies (eg python, python3, numpy, scipy, ffmpeg, etc.). If there are any missing that opencv requires they'll be automatically installed, so it shouldn't be an issue
 		- Then just execute "brew install opencv3 --with-contrib --with-ffmpeg --with-gphoto2 --with-gstreamer --with-jasper --with-libdc1394 --with-opengl --with-openni2 --with-python3 --with-qt5 --with-tbb --with-vtk"
 
-		- OPTIONAL (Alternative to last command): Execute "export EDITOR=nano; brew edit opencv3" (could also use a better editor like 'export EDITOR=/Applications/Atom.app/Contents/MacOS/Atom')
+---------------------------------------------------------------------------------
+
+3/9/2016:
+	Wooohooo, found a method to extract frames from UVC cameras that's muuuuch better than OpenCV (allows you to set exposure time, contrast, brightness, white balance, etc.). Here are the steps (pretty much follow pupil-labs/pyuvc's readme):
+		- Install pupil-labs/libuvc (watch out, this is not the same as brew info libuvc!! In fact, pupil-labs's version is a fork of the original [the Homebrew one] ktossell/libuvc repo):
+			+ git clone https://github.com/pupil-labs/libuvc
+			+ cd libuvc
+			+ mkdir build
+			+ cd build
+			+ cmake ..
+			+ make && sudo make install
+		- Install libjpeg-turbo:
+			+ brew install libjpeg-turbo
+		- Install cython and numpy:
+			+ pip install cython
+			+ brew install numpy
+		- Not sure, but I think I had to install pupil-labs/pyglui (you can try skipping this step and if you get an error, come back here :P):
+			+ brew install glew
+			+ git clone http://github.com/pupil-labs/pyglui --recursive
+			+ cd pyglui
+			+ sudo python setup.py install
+		- Finally, build and install pupil-labs/pyuvc:
+			+ git clone https://github.com/pupil-labs/pyuvc
+			+ cd pyuvc
+			+ Optional: Open file 'controls.pxi' and add the following function at the end of the file:
+				def set_value(self, value):  # Equivalent to "value"'s setter, but this one throws an Exception if setting value failed (i.e., the user can know whether the setting was successful)
+					self._uvc_set(value)
+					self.refresh()
+			+ python setup.py install
+
+---------------------------------------------------------------------------------
+
+		- OPTIONAL (Alternative to last command from 2/26/2016's instructions): Execute "export EDITOR=nano; brew edit opencv3" (could also use a better editor like 'export EDITOR=/Applications/Atom.app/Contents/MacOS/Atom')
 			+ In line 37 (between with-opengl and with-quicktime) add this line:
 				option "with-avfoundation", "Use AVFoundation for Video I/O instead of QTKit"
 			+ Replace line 123 (or the one that starts with 'args << "-DWITH_QUICKTIME="...) by these 2 lines:

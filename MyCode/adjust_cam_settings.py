@@ -4,7 +4,9 @@ import numpy as np
 from datetime import datetime
 import os
 import sys
-from PyQt5.QtWidgets import QApplication, QSpinBox, QSpacerItem, QSizePolicy, QCheckBox, QAbstractSpinBox
+from uvc_capture import UvcCapture
+from PyQt5.QtWidgets import QApplication, QSpinBox, QSpacerItem, QSizePolicy, QCheckBox, QAbstractSpinBox, QPushButton, QFileDialog, \
+    QMessageBox
 from PyQt5.QtGui import QImage, QPixmap, QResizeEvent
 from PyQt5.QtCore import Qt, QThread, QTimer, pyqtSignal, pyqtSlot, QSize, QObject, QEvent
 from PyQt5.uic import loadUi
@@ -56,7 +58,7 @@ class CamFrameGrabberThread(QThread):
     sig_update_cam_ui = pyqtSignal()
     sig_new_dev_selected = pyqtSignal(str)
     sig_new_img = pyqtSignal()
-    sig_error = pyqtSignal()
+    sig_error = pyqtSignal(str)
 
     def __init__(self):
         QThread.__init__(self)
@@ -105,49 +107,33 @@ class CamFrameGrabberThread(QThread):
         if self.cap is not None:  # Sanity check (in case capture device was just closed)
             for c in self.cap.controls:
                 if c.display_name == ctrl_name:
-                    if is_bool:
-                        c.value = c.min_val if (new_value == Qt.Unchecked) else c.max_val
-                    else:
-                        c.value = new_value
-                    print "'{}' changed to {}".format(c.display_name, c.value)
+                    try:
+                        if is_bool:
+                            c.set_value(c.min_val if (new_value == Qt.Unchecked) else c.max_val)
+                        else:
+                            c.set_value(new_value)
+                        print "'{}' changed to {}".format(c.display_name, c.value)
+                    except:
+                        self.sig_error.emit("Unable to change '{}' property to '{}'! Make sure the value is valid (within bounds, not disabled by other setting like 'Auto' modes, etc).".format(ctrl_name, new_value))
                     return
 
     def run(self):
         while not self.done:
             self.sleep(1)
 
-            cam_uid = ''  # From the available devices list, find the one we want (DESIRED_CAM)
-            for d in threadDevLister.dev_list:
-                if d['name'] == self.dev_selected_name:
-                    cam_uid = d['uid']
-            if cam_uid == '':  # If we didn't find the desired cam, exit
+            self.cap = UvcCapture(self.dev_selected_name)
+            if self.cap is None:  # If we didn't find the desired cam, don't continue
                 self.qPix = QPixmap(1, 1)
                 print "No compatible cameras found or chosen camera name not available :("
                 self.sig_update_cam_ui.emit()
                 continue
 
-            self.cap = uvc.Capture(cam_uid)  # Otherwise, open the desired cam
             for c in self.cap.controls:  # Adjust some cam settings and print cam info
-                # if 'Focus' in c.display_name:
-                #     c.value = c.def_val
-                # if 'Auto Exposure Mode' in c.display_name:
-                #     c.value = c.def_val
-                # if 'Absolute Exposure Time' in c.display_name:
-                #     c.value = c.def_val
-                # if "White Balance temperature,Auto" in c.display_name:
-                #     c.value = 0
-                # if "Backlight Compensation" in c.display_name:
-                #     c.value = 0
-                # if "Auto Exposure Priority" in c.display_name:
-                #     c.value = 0
                 print "{} = {} {} (def:{}, min:{}, max:{})".format(c.display_name, str(c.value), str(c.unit), str(c.def_val), str(c.min_val), str(c.max_val))
-            avail_modes = np.array(sorted(self.cap.avaible_modes, reverse=True))  # Sort available modes by decreasing frame width, height and fps (in that order, in case there's a tie)
-            try:
-                self.cap.frame_mode = tuple(avail_modes[np.argwhere(avail_modes[:,2] >= self.DEFAULT_FPS).ravel()[0]])  # Choose biggest size with fps >= DESIRED_FPS
-            except:  # In case no modes meet the criteria, choose the biggest size & highest frame rate
-                self.cap.frame_mode = tuple(avail_modes[0])
-            print self.cap.name + " has the following available modes:\n\t" + str([tuple(x) for x in avail_modes]) + "\nSelected mode: " + str(self.cap.frame_mode)
+            self.cap.select_best_frame_mode(self.DEFAULT_FPS)
+            print self.cap.name + " has the following available modes:\n\t" + str([tuple(x) for x in self.cap.sorted_available_modes()]) + "\nSelected mode: " + str(self.cap.frame_mode)
             self.cap.print_info()
+            # print "LOADING SETTINGS returned {}".format(self.cap.load_settings("/Users/Carlitos/Dropbox/UNI CARLOS/Grad school/Research/SensorFlySwarm/MyCode/UVCcam settings - USB 2.0 Camera.txt"))
             self.sig_update_cam_ui.emit()
 
             img = np.zeros(self.cap.frame_size)
@@ -164,7 +150,7 @@ class CamFrameGrabberThread(QThread):
                 ok = False
                 for a in range(5):
                     try:
-                        frame = self.cap.get_frame()
+                        frame = self.cap.get_frame_robust()
                     except uvc.CaptureError as e:
                         print 'DEBUG - Could not get Frame. Error: "%s". Tried %s time(s).'%(e.message,a+1)
                     else:
@@ -172,8 +158,7 @@ class CamFrameGrabberThread(QThread):
                         ok = True
                         break
                 if not ok:
-                    print "Couldn't get frame after 5 tries, reconnecting"
-                    self.sig_error.emit()
+                    self.sig_error.emit("Couldn't get camera frame after 5 tries, reconnecting...")
                     break
 
                 t = datetime.now()
@@ -229,6 +214,23 @@ def remove_all_layout_children(layout):
             widget.deleteLater()
         else:  # Unless it is a nested layout, in which case recursively delete all its children
             remove_all_layout_children(item.layout())
+
+@pyqtSlot(str)
+def show_error_message(str_msg):
+    print "Showing error message: '{}'".format(str_msg)
+    QMessageBox.critical(window, "ERROR! :(", str_msg)
+
+@pyqtSlot()
+def save_current_settings():
+    fileName, extension_filter = QFileDialog.getSaveFileName(window, "Save current camera settings to a file", "UVCcam settings - {}".format(threadFrameGrabber.dev_selected_name), "UVC camera settings (*.txt)")
+    if fileName:
+        if threadFrameGrabber.cap is not None:
+            if threadFrameGrabber.cap.save_settings(fileName):
+                QMessageBox.about(window, "Current settings", "Congratulations, {}'s current settings have been successfully saved!".format(threadFrameGrabber.dev_selected_name))
+            else:
+                QMessageBox.about(window, "Current settings", "Unfortunately, there was an error while attempting to save {}'s current settings. Try again later or read the log for more details.".format(threadFrameGrabber.dev_selected_name))
+    else:
+        print "User canceled saving the settings"
 
 @pyqtSlot(QResizeEvent)
 def on_resize(event):
@@ -295,7 +297,7 @@ def update_cam_ui():
     i = 0
     for c in threadFrameGrabber.cap.controls:
         if c.max_val - c.min_val == 1:
-            ctrl = QCheckBox()
+            ctrl = QCheckBox(window.grpSettings)
             ctrl.setObjectName("chk_camSettings_{}".format(i+1))
             ctrl.setText(c.display_name)
             ctrl.setChecked(c.value == c.max_val)
@@ -310,16 +312,21 @@ def update_cam_ui():
             ctrl.installEventFilter(FilterIgnoreScroll(ctrl))
 
             ctrl.setPrefix("{}: ".format(c.display_name))
-            ctrl.setValue(c.value)
             ctrl.setMaximum(c.max_val)
             ctrl.setMinimum(c.min_val)
+            ctrl.setValue(c.value)
             ctrl.setSingleStep(max(1, (c.max_val-c.min_val)/25))
             ctrl.valueChanged.connect(lambda v, n=c.display_name: threadFrameGrabber.change_cam_control_setting(n, v, False))
 
         ctrl.setStatusTip("{}. Default value: {}. Valid range: [{}, {}]. Units: {}".format(c.display_name, c.def_val, c.min_val, c.max_val, c.unit))
         window.layoutGrpSettings.addWidget(ctrl, i, 0, 1, 1)
         i += 1
-    window.layoutGrpSettings.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding), i, 0, 1, 1)
+    btn_save_settings = QPushButton(window.grpSettings)
+    btn_save_settings.setObjectName("btn_save_settings")
+    btn_save_settings.setText("Save current settings")
+    btn_save_settings.clicked.connect(save_current_settings)
+    window.layoutGrpSettings.addWidget(btn_save_settings, i, 0, 1, 1)
+    window.layoutGrpSettings.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding), i+1, 0, 1, 1)
 
 app = QApplication(sys.argv)
 threadDevLister = CamDeviceListRefresher()  # Initialize all variables first, in case other methods need to access them before .start() is called
@@ -341,6 +348,7 @@ threadDevLister.sig_new_dev.connect(refresh_cam_device_list)
 threadFrameGrabber.sig_update_cam_ui.connect(update_cam_ui)
 threadFrameGrabber.sig_new_dev_selected.connect(threadFrameGrabber.change_selected_device)
 # threadFrameGrabber.sig_new_img.connect(change_img)
+threadFrameGrabber.sig_error.connect(show_error_message)
 threadDevLister.start()
 threadFrameGrabber.start()
 
