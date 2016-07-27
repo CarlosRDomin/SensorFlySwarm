@@ -72,7 +72,7 @@
 
 ---------------------------------------------------------------------------------
 
-		- OPTIONAL (Alternative to last command from 2/26/2016's instructions): Execute "export EDITOR=nano; brew edit opencv3" (could also use a better editor like 'export EDITOR=/Applications/Atom.app/Contents/MacOS/Atom')
+		- OPTIONAL [Meh, opencv video doesn't work well with AVFoundation anyways, ignore this] (Alternative to last command from 2/26/2016's instructions): Execute "export EDITOR=nano; brew edit opencv3" (could also use a better editor like 'export EDITOR=/Applications/Atom.app/Contents/MacOS/Atom')
 			+ In line 37 (between with-opengl and with-quicktime) add this line:
 				option "with-avfoundation", "Use AVFoundation for Video I/O instead of QTKit"
 			+ Replace line 123 (or the one that starts with 'args << "-DWITH_QUICKTIME="...) by these 2 lines:

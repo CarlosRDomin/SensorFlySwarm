@@ -2,11 +2,9 @@ import uvc
 import cv2
 import numpy as np
 from datetime import datetime
-import os
 import sys
 from uvc_capture import UvcCapture
-from PyQt5.QtWidgets import QApplication, QSpinBox, QSpacerItem, QSizePolicy, QCheckBox, QAbstractSpinBox, QPushButton, QFileDialog, \
-    QMessageBox
+from PyQt5.QtWidgets import QApplication, QSpinBox, QSpacerItem, QSizePolicy, QCheckBox, QAbstractSpinBox, QPushButton, QFileDialog, QMessageBox
 from PyQt5.QtGui import QImage, QPixmap, QResizeEvent
 from PyQt5.QtCore import Qt, QThread, QTimer, pyqtSignal, pyqtSlot, QSize, QObject, QEvent
 from PyQt5.uic import loadUi
@@ -49,7 +47,6 @@ class CamDeviceListRefresher(QThread):
 class CamFrameGrabberThread(QThread):
 
     DEFAULT_CAM = "USB 2.0 Camera"
-    # DESIRED_CAM = "FaceTime HD Camera (Built-in)"
     DEFAULT_FPS = 60
     FPS_ESTIMATION_ALPHA = 0.98
     FRAME_SIZE_STR_SPLITTER = " x "
@@ -86,7 +83,7 @@ class CamFrameGrabberThread(QThread):
     @pyqtSlot(str)
     def change_selected_device(self, dev_selected):
         if self.dev_selected_name != dev_selected: print "New device selected: {}".format(dev_selected)
-        self.dev_selected_name = dev_selected
+        self.dev_selected_name = str(dev_selected)
 
     @pyqtSlot(str, bool)
     def change_cam_frame_size(self, new_frame_size, emit_signal):
@@ -133,16 +130,16 @@ class CamFrameGrabberThread(QThread):
             self.cap.select_best_frame_mode(self.DEFAULT_FPS)
             print self.cap.name + " has the following available modes:\n\t" + str([tuple(x) for x in self.cap.sorted_available_modes()]) + "\nSelected mode: " + str(self.cap.frame_mode)
             self.cap.print_info()
-            # print "LOADING SETTINGS returned {}".format(self.cap.load_settings("/Users/Carlitos/Dropbox/UNI CARLOS/Grad school/Research/SensorFlySwarm/MyCode/UVCcam settings - USB 2.0 Camera.txt"))
+            print "LOADING SETTINGS returned {}".format(self.cap.load_settings("/Users/Carlitos/GoogleDrive/UNI CARLOS/Grad school/Research/SensorFlySwarm/MyCode/UVCcam settings - USB 2.0 Camera.txt"))
             self.sig_update_cam_ui.emit()
 
             img = np.zeros(self.cap.frame_size)
             self.qPix = QPixmap.fromImage(QImage(img.data, img.shape[1], img.shape[0], QImage.Format_RGB888))
 
-            if os.path.exists(self.VIDEO_FOLDER):
-                for f in os.listdir(self.VIDEO_FOLDER): os.remove(os.path.join(self.VIDEO_FOLDER, f))
-            else:
-                os.makedirs(self.VIDEO_FOLDER)
+            # if os.path.exists(self.VIDEO_FOLDER):
+            #     for f in os.listdir(self.VIDEO_FOLDER): os.remove(os.path.join(self.VIDEO_FOLDER, f))
+            # else:
+            #     os.makedirs(self.VIDEO_FOLDER)
 
             self.actual_fps = self.cap.frame_rate
             tt = datetime.now()

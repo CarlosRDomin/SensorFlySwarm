@@ -9,12 +9,15 @@ class UvcCapture(uvc.Capture):
     logging.basicConfig(level=logging.DEBUG)
 
     def __new__(cls, cam_name, *more):
+        cam_uid = ""
         if isinstance(cam_name, str):
-            cam_uid = ""
             for d in uvc.device_list():  # From the available devices list, find the one we want
                 if d['name'] == cam_name:
                     cam_uid = d['uid']
                     break
+        elif isinstance(cam_name, int):
+            if cam_name < len(uvc.device_list()):
+                cam_uid = uvc.device_list()[cam_name]['uid']
 
         if cam_uid == "":
             logging.warning("Couldn't find camera '{}' in the list of available UVC devices, aborting creation of {} object.".format(cam_name, UvcCapture))

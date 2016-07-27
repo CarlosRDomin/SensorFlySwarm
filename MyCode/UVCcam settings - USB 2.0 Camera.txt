@@ -1,15 +1,15 @@
 1280,720	60
 Auto Exposure Mode	1
 Auto Exposure Priority	0
-Absolute Exposure Time	118
+Absolute Exposure Time	120
 Backlight Compensation	0
 Brightness	0
 Contrast	32
-Gain	16
+Gain	5
 Power Line frequency	2
 Hue	0
-Saturation	70
+Saturation	65
 Sharpness	0
-Gamma	90
-White Balance temperature	3800
+Gamma	125
+White Balance temperature	3750
 White Balance temperature,Auto	0
