@@ -1,32 +1,3 @@
-#!/usr/bin/python
-#
-# Original version downloaded from: https://github.com/ivmech/ivPID/blob/master/PID.py
-#
-# This file is part of IvPID.
-# Copyright (C) 2015 Ivmech Mechatronics Ltd. <bilgi@ivmech.com>
-#
-# IvPID is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# IvPID is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-# title           :PID.py
-# description     :python pid controller
-# author          :Caner Durmusoglu
-# date            :20151218
-# version         :0.1
-# notes           :
-# python_version  :2.7
-# ==============================================================================
-
 """
 	Modification of Ivmech's PID Controller (https://github.com/ivmech/ivPID) to fit my custom needs.
 	File contains two classes:
@@ -37,6 +8,8 @@
 		Then, the output of that PID controller (desired velocity) is used as the set-point for the second PID loop,
 		which looks at current velocity and acts upon it by providing a reaction acceleration.
 """
+
+
 from datetime import datetime, timedelta
 
 class PID:
@@ -80,15 +53,7 @@ class PID:
 
 	def update(self, feedback_value, t=None):
 		"""Calculates PID value for given reference feedback
-
-		.. math::
 			u(t) = K_p e(t) + K_i \int_{0}^{t} e(t)dt + K_d {de}/{dt}
-
-		.. figure:: images/pid_1.png
-		   :align:   center
-
-		   Test PID with Kp=1.2, Ki=1, Kd=0.001 (test_pid.py)
-
 		"""
 		if t is None: t = datetime.now()
 
@@ -152,14 +117,11 @@ class PID:
 		self.out_max = out_max
 
 	def setImax(self, I_max):
-		"""Integral windup, also known as integrator windup or reset windup,
-		refers to the situation in a PID feedback controller where
-		a large change in setpoint occurs (say a positive change)
-		and the integral terms accumulates a significant error
-		during the rise (windup), thus overshooting and continuing
-		to increase as this accumulated error is unwound
-		(offset by errors in the other direction).
-		The specific problem is the excess overshooting.
+		"""
+		Integral windup, also known as integrator windup or reset windup, refers to the situation in a PID feedback controller
+		where a large change in setpoint occurs (say a positive change) and the integral terms accumulates a significant error
+		during the rise (windup), thus overshooting and continuing to increase as this accumulated error is unwound
+		(offset by errors in the other direction). The specific problem is the excess overshooting.
 		"""
 		self.I_max = I_max
 
@@ -168,8 +130,9 @@ class PID:
 		self.error_max = error_max
 
 	def setSampleTime(self, sample_time):
-		"""PID that should be updated at a regular interval.
-		Based on a pre-determined sampe time, the PID decides if it should compute or return immediately.
+		"""
+		PID that should be updated at a regular interval.
+		Based on a pre-determined sample time, the PID decides if it should compute or return immediately.
 		"""
 		self.sample_time = sample_time
 
@@ -178,6 +141,7 @@ class PIDposAndVel:
 		Structure of 2 PID loops (PIV controller), where the output of one (position)
 		is used as the set-point for the other (velocity)
 	"""
+
 	def __init__(self, posP=0, posI=0, posD=0, pos_set_point=0, pos_offs=0, pos_out_max=float('Inf'), pos_I_max=float('Inf'), pos_error_max=float('Inf'), pos_invert_error=False,
 				 velP=0, velI=0, velD=0, vel_set_point=0, vel_offs=0, vel_out_max=float('Inf'), vel_I_max=float('Inf'), vel_error_max=float('Inf'), vel_invert_error=False, vel_invert_input=False, error_in_degrees=False, is_interval_const=False, max_vel=300):
 		self.PIDpos = PID(posP, posI, posD, pos_set_point, pos_offs, pos_out_max, pos_I_max, pos_error_max, pos_invert_error, error_in_degrees, is_interval_const)

@@ -5,12 +5,14 @@
 """
 
 from datetime import datetime, timedelta
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
+
 class MagnitudeControlLog:
-	def __init__(self, str_magnitude="", pid_offset=0):
+	def __init__(self, experiment_start_datetime, str_magnitude="", pid_offset=0):
 		self.lst_timestamp = []
 		self.lst_setpoint = []
 		self.lst_measured = []
@@ -19,6 +21,10 @@ class MagnitudeControlLog:
 		self.lst_out_D = []
 		self.pid_offset = pid_offset
 		self.str_magnitude = str_magnitude
+		self.EXPERIMENT_START_DATETIME = experiment_start_datetime
+		self.LOG_FILENAME = "log_{}_{}".format(str_magnitude, experiment_start_datetime.replace(':', '-').replace(' ', '_'))
+		self.LOG_FOLDER = "log/{}".format(experiment_start_datetime)
+		self.SYM_FOLDER = "log/{}".format(str_magnitude)
 
 	def clear(self):
 		self.lst_timestamp = []
@@ -27,6 +33,15 @@ class MagnitudeControlLog:
 		self.lst_out_P = []
 		self.lst_out_I = []
 		self.lst_out_D = []
+
+	def create_log_dirs(self):
+		if not os.path.exists(self.LOG_FOLDER):
+			os.makedirs(self.LOG_FOLDER)
+		if not os.path.exists(self.SYM_FOLDER):
+			os.makedirs(self.SYM_FOLDER)
+
+	def get_log_filename(self, is_sym=False):
+		return os.path.join(self.SYM_FOLDER if is_sym else self.LOG_FOLDER, self.LOG_FILENAME)
 
 	def get_timestamp(self):
 		return np.array(self.lst_timestamp)
@@ -110,29 +125,47 @@ class MagnitudeControlLog:
 		figManager.window.showMaximized()
 		fig.set_tight_layout(True)
 		fig.show()
-		fig.savefig('log/log_' + self.str_magnitude + '_' + datetime.now().strftime("%m-%d_%H-%M-%S") + '.pdf')
+
+		self.create_log_dirs()  # Make sure LOG_FOLDER and SYM_FOLDER exist so saving the figure doesn't raise an exception
+		fig.savefig("{}.pdf".format(self.get_log_filename()))
+		if not os.path.exists("{}.pdf".format(self.get_log_filename(True))):  # Create symlink (if not already created, would raise an exception in that case)
+			os.symlink("{}.pdf".format(os.path.abspath(self.get_log_filename())), "{}.pdf".format(self.get_log_filename(True)))  # Create a symlink to keep logs organized by date and also by magnitude (make sure symlink source path is absolute!!)
 
 		return fig
 
+	def save(self):
+		self.create_log_dirs()  # Make sure LOG_FOLDER and SYM_FOLDER exist so saving the arrays doesn't raise an exception
+		np.savez_compressed("{}.npz".format(self.get_log_filename()),
+							t=self.get_timestamp(), setpoint=self.get_setpoint(), measured=self.get_measured(),
+							out_P=self.get_out_P(), out_I=self.get_out_I(), out_D=self.get_out_D(), offset=self.pid_offset)
+		if not os.path.exists("{}.npz".format(self.get_log_filename(True))):  # Create symlink (if not already created, would raise an exception in that case)
+			os.symlink("{}.npz".format(os.path.abspath(self.get_log_filename())), "{}.npz".format(self.get_log_filename(True)))  # Create a symlink to keep logs organized by date and also by magnitude (make sure symlink source path is absolute!!)
+
+	def load(self):
+		with np.load("{}.npz".format(self.get_log_filename())) as data:
+			self.lst_timestamp = list(data["t"])
+			self.lst_setpoint = list(data["setpoint"])
+			self.lst_measured = list(data["measured"])
+			self.lst_out_P = list(data["out_P"])
+			self.lst_out_I = list(data["out_I"])
+			self.lst_out_D = list(data["out_D"])
+			self.pid_offset = data["offset"][()]  # offset was a number, so it becomes a 0-d array in numpy -> [()] is the only way to index it without getting an error =)
+
 
 class OverallControlLog:
-	def __init__(self):
-		self.roll_pos = MagnitudeControlLog("Roll_pos")
-		self.roll_vel = MagnitudeControlLog("Roll_vel")
-		self.pitch_pos = MagnitudeControlLog("Pitch_pos")
-		self.pitch_vel = MagnitudeControlLog("Pitch_vel")
-		self.yaw = MagnitudeControlLog("Yaw")
-		self.thrust_pos = MagnitudeControlLog("Thrust_pos")
-		self.thrust_vel = MagnitudeControlLog("Thrust_vel")
+	def __init__(self, experiment_start_datetime):
+		self.roll_pos = MagnitudeControlLog(experiment_start_datetime, "Roll_pos")
+		self.roll_vel = MagnitudeControlLog(experiment_start_datetime, "Roll_vel")
+		self.pitch_pos = MagnitudeControlLog(experiment_start_datetime, "Pitch_pos")
+		self.pitch_vel = MagnitudeControlLog(experiment_start_datetime, "Pitch_vel")
+		self.yaw = MagnitudeControlLog(experiment_start_datetime, "Yaw")
+		self.thrust_pos = MagnitudeControlLog(experiment_start_datetime, "Thrust_pos")
+		self.thrust_vel = MagnitudeControlLog(experiment_start_datetime, "Thrust_vel")
+		self.magnitudes = [self.roll_pos, self.roll_vel, self.pitch_pos, self.pitch_vel, self.yaw, self.thrust_pos, self.thrust_vel]
 
 	def clear(self):
-		self.roll_pos.clear()
-		self.roll_vel.clear()
-		self.pitch_pos.clear()
-		self.pitch_vel.clear()
-		self.yaw.clear()
-		self.thrust_pos.clear()
-		self.thrust_vel.clear()
+		for m in self.magnitudes:
+			m.clear()
 
 	def update(self, roll_PID, pitch_PID, yaw_PID, thrust_PID, timestamp=None):
 		if roll_PID is not None:
@@ -164,21 +197,30 @@ class OverallControlLog:
 
 	def plot(self, wait=True):
 		plt.ion()
-		self.roll_pos.plot()
-		self.roll_vel.plot()
-		self.pitch_pos.plot()
-		self.pitch_vel.plot()
-		self.yaw.plot()
-		self.thrust_pos.plot()
-		self.thrust_vel.plot()
+		for m in self.magnitudes:
+			m.plot()
 		if wait:
 			while not plt.waitforbuttonpress(timeout=5): pass  # Wait until a key is pressed (waitforbuttonpress will return True if a key was pressed, False if the mouse was clicked)
+
+	def save(self):
+		for m in self.magnitudes:
+			m.save()
+
+	def load(self):
+		for m in self.magnitudes:
+			m.load()
 
 
 if __name__ == '__main__':
 	from random import random
-	log = MagnitudeControlLog("Roll")
+	log = MagnitudeControlLog(str(datetime.now())[:-7], "Roll")
 	for x in range(0, 100):
 		log.update_long(5, 5-random(), 10*random()-2, 3*random()-1.5, random())
 	log.plot()
+	log.save()
+	log2 = MagnitudeControlLog(log.EXPERIMENT_START_DATETIME, log.str_magnitude)
+	log2.load()
+	log2.plot()
+	log2.save()
+	print "Save & Load procedures work! :)" if (log.lst_timestamp == log2.lst_timestamp) and (log.lst_measured == log2.lst_measured) and (log.lst_out_P == log2.lst_out_P) and (log.pid_offset == log2.pid_offset) else "Ooops, Save & Load still needs some more work... :("
 	plt.waitforbuttonpress()

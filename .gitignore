@@ -1,9 +1,8 @@
-AdeolaCode/
 Crazyflie*
 Posters/
 MyCode/cache*/
-MyCode/img/
 MyCode/log/
+MyCode/img/
 *.idea
 *.tar.gz
 *.dmg

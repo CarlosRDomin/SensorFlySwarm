@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>654</width>
-    <height>307</height>
+    <height>710</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -47,10 +47,22 @@
          <x>0</x>
          <y>0</y>
          <width>296</width>
-         <height>236</height>
+         <height>639</height>
         </rect>
        </property>
        <layout class="QVBoxLayout" name="layoutScrollArea">
+        <property name="leftMargin">
+         <number>11</number>
+        </property>
+        <property name="topMargin">
+         <number>12</number>
+        </property>
+        <property name="rightMargin">
+         <number>11</number>
+        </property>
+        <property name="bottomMargin">
+         <number>12</number>
+        </property>
         <item>
          <widget class="QGroupBox" name="grpInput">
           <property name="sizePolicy">
@@ -83,11 +95,539 @@
          </widget>
         </item>
         <item>
-         <widget class="QGroupBox" name="grpSettings">
+         <widget class="QGroupBox" name="grpCam">
           <property name="title">
            <string>Device settings</string>
           </property>
-          <layout class="QGridLayout" name="layoutGrpSettings"/>
+          <layout class="QGridLayout" name="layoutGrpCam"/>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="grpColor">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="title">
+           <string>Color thresholding settings</string>
+          </property>
+          <property name="flat">
+           <bool>false</bool>
+          </property>
+          <property name="checkable">
+           <bool>true</bool>
+          </property>
+          <layout class="QGridLayout" name="layoutGrpColor">
+           <item row="0" column="1">
+            <widget class="QDial" name="dial_color_Hmin">
+             <property name="maximumSize">
+              <size>
+               <width>32</width>
+               <height>32</height>
+              </size>
+             </property>
+             <property name="maximum">
+              <number>179</number>
+             </property>
+             <property name="notchTarget">
+              <double>30.000000000000000</double>
+             </property>
+             <property name="notchesVisible">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QDial" name="dial_color_Smin">
+             <property name="maximumSize">
+              <size>
+               <width>32</width>
+               <height>32</height>
+              </size>
+             </property>
+             <property name="maximum">
+              <number>255</number>
+             </property>
+             <property name="notchTarget">
+              <double>32.000000000000000</double>
+             </property>
+             <property name="notchesVisible">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="lbl_color_S">
+             <property name="text">
+              <string>S:</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QDial" name="dial_color_Vmin">
+             <property name="maximumSize">
+              <size>
+               <width>32</width>
+               <height>32</height>
+              </size>
+             </property>
+             <property name="maximum">
+              <number>255</number>
+             </property>
+             <property name="notchTarget">
+              <double>32.000000000000000</double>
+             </property>
+             <property name="notchesVisible">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="5">
+            <widget class="QSpinBox" name="spin_color_Hmax">
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+             <property name="accelerated">
+              <bool>true</bool>
+             </property>
+             <property name="correctionMode">
+              <enum>QAbstractSpinBox::CorrectToNearestValue</enum>
+             </property>
+             <property name="maximum">
+              <number>179</number>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="0">
+            <widget class="QLabel" name="lbl_color_H">
+             <property name="text">
+              <string>H:</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="2">
+            <widget class="QSpinBox" name="spin_color_Hmin">
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+             <property name="accelerated">
+              <bool>true</bool>
+             </property>
+             <property name="correctionMode">
+              <enum>QAbstractSpinBox::CorrectToNearestValue</enum>
+             </property>
+             <property name="maximum">
+              <number>179</number>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="6">
+            <widget class="QDial" name="dial_color_Hmax">
+             <property name="maximumSize">
+              <size>
+               <width>32</width>
+               <height>32</height>
+              </size>
+             </property>
+             <property name="maximum">
+              <number>179</number>
+             </property>
+             <property name="notchTarget">
+              <double>30.000000000000000</double>
+             </property>
+             <property name="notchesVisible">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="6">
+            <widget class="QDial" name="dial_color_Smax">
+             <property name="maximumSize">
+              <size>
+               <width>32</width>
+               <height>32</height>
+              </size>
+             </property>
+             <property name="maximum">
+              <number>255</number>
+             </property>
+             <property name="notchTarget">
+              <double>32.000000000000000</double>
+             </property>
+             <property name="notchesVisible">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="lbl_color_V">
+             <property name="text">
+              <string>V:</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="2">
+            <widget class="QSpinBox" name="spin_color_Smin">
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+             <property name="accelerated">
+              <bool>true</bool>
+             </property>
+             <property name="correctionMode">
+              <enum>QAbstractSpinBox::CorrectToNearestValue</enum>
+             </property>
+             <property name="maximum">
+              <number>255</number>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="5">
+            <widget class="QSpinBox" name="spin_color_Smax">
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+             <property name="accelerated">
+              <bool>true</bool>
+             </property>
+             <property name="correctionMode">
+              <enum>QAbstractSpinBox::CorrectToNearestValue</enum>
+             </property>
+             <property name="maximum">
+              <number>255</number>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="2">
+            <widget class="QSpinBox" name="spin_color_Vmin">
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+             <property name="accelerated">
+              <bool>true</bool>
+             </property>
+             <property name="correctionMode">
+              <enum>QAbstractSpinBox::CorrectToNearestValue</enum>
+             </property>
+             <property name="maximum">
+              <number>255</number>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="5">
+            <widget class="QSpinBox" name="spin_color_Vmax">
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+             <property name="accelerated">
+              <bool>true</bool>
+             </property>
+             <property name="correctionMode">
+              <enum>QAbstractSpinBox::CorrectToNearestValue</enum>
+             </property>
+             <property name="maximum">
+              <number>255</number>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="6">
+            <widget class="QDial" name="dial_color_Vmax">
+             <property name="maximumSize">
+              <size>
+               <width>32</width>
+               <height>32</height>
+              </size>
+             </property>
+             <property name="maximum">
+              <number>255</number>
+             </property>
+             <property name="notchTarget">
+              <double>32.000000000000000</double>
+             </property>
+             <property name="notchesVisible">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="3" rowspan="3">
+            <widget class="Line" name="line_color_minMax">
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="grpBlob">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="title">
+           <string>Blob detector settings</string>
+          </property>
+          <property name="checkable">
+           <bool>true</bool>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+          <layout class="QGridLayout" name="layoutGrpBlob">
+           <item row="0" column="0">
+            <widget class="QCheckBox" name="chk_blob_area">
+             <property name="text">
+              <string>Area</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QCheckBox" name="chk_blob_circ">
+             <property name="text">
+              <string>Circ.</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="3">
+            <widget class="QSpinBox" name="spin_blob_circMax">
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+             <property name="accelerated">
+              <bool>true</bool>
+             </property>
+             <property name="correctionMode">
+              <enum>QAbstractSpinBox::CorrectToNearestValue</enum>
+             </property>
+             <property name="suffix">
+              <string> %</string>
+             </property>
+             <property name="maximum">
+              <number>100</number>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QSpinBox" name="spin_blob_areaMin">
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+             <property name="accelerated">
+              <bool>true</bool>
+             </property>
+             <property name="correctionMode">
+              <enum>QAbstractSpinBox::CorrectToNearestValue</enum>
+             </property>
+             <property name="maximum">
+              <number>921600</number>
+             </property>
+             <property name="singleStep">
+              <number>100</number>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="0">
+            <widget class="QCheckBox" name="chk_blob_inertia">
+             <property name="text">
+              <string>Inertia</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="2" rowspan="4">
+            <widget class="Line" name="line_blob_minMax">
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QSpinBox" name="spin_blob_circMin">
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+             <property name="accelerated">
+              <bool>true</bool>
+             </property>
+             <property name="correctionMode">
+              <enum>QAbstractSpinBox::CorrectToNearestValue</enum>
+             </property>
+             <property name="suffix">
+              <string> %</string>
+             </property>
+             <property name="maximum">
+              <number>100</number>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="3">
+            <widget class="QSpinBox" name="spin_blob_areaMax">
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+             <property name="accelerated">
+              <bool>true</bool>
+             </property>
+             <property name="correctionMode">
+              <enum>QAbstractSpinBox::CorrectToNearestValue</enum>
+             </property>
+             <property name="maximum">
+              <number>921600</number>
+             </property>
+             <property name="singleStep">
+              <number>100</number>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="1">
+            <widget class="QSpinBox" name="spin_blob_inertiaMin">
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+             <property name="accelerated">
+              <bool>true</bool>
+             </property>
+             <property name="correctionMode">
+              <enum>QAbstractSpinBox::CorrectToNearestValue</enum>
+             </property>
+             <property name="suffix">
+              <string> %</string>
+             </property>
+             <property name="maximum">
+              <number>100</number>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="3">
+            <widget class="QSpinBox" name="spin_blob_inertiaMax">
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+             <property name="accelerated">
+              <bool>true</bool>
+             </property>
+             <property name="correctionMode">
+              <enum>QAbstractSpinBox::CorrectToNearestValue</enum>
+             </property>
+             <property name="suffix">
+              <string> %</string>
+             </property>
+             <property name="maximum">
+              <number>100</number>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QCheckBox" name="chk_blob_conv">
+             <property name="text">
+              <string>Conv.</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QSpinBox" name="spin_blob_convMin">
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+             <property name="accelerated">
+              <bool>true</bool>
+             </property>
+             <property name="correctionMode">
+              <enum>QAbstractSpinBox::CorrectToNearestValue</enum>
+             </property>
+             <property name="suffix">
+              <string> %</string>
+             </property>
+             <property name="maximum">
+              <number>100</number>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="3">
+            <widget class="QSpinBox" name="spin_blob_convMax">
+             <property name="alignment">
+              <set>Qt::AlignCenter</set>
+             </property>
+             <property name="accelerated">
+              <bool>true</bool>
+             </property>
+             <property name="correctionMode">
+              <enum>QAbstractSpinBox::CorrectToNearestValue</enum>
+             </property>
+             <property name="suffix">
+              <string> %</string>
+             </property>
+             <property name="maximum">
+              <number>100</number>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="grpSave">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="title">
+           <string>Save settings</string>
+          </property>
+          <layout class="QGridLayout" name="layoutGrpSave">
+           <item row="2" column="0">
+            <widget class="QCheckBox" name="chk_save_blob">
+             <property name="text">
+              <string>Save blob detector settings</string>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="0">
+            <widget class="QCheckBox" name="chk_save_cam">
+             <property name="text">
+              <string>Save camera settings</string>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QCheckBox" name="chk_save_color">
+             <property name="text">
+              <string>Save color threshold settings</string>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="0">
+            <widget class="QPushButton" name="btn_save_settings">
+             <property name="text">
+              <string>Save current settings</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
          </widget>
         </item>
        </layout>
@@ -113,6 +653,9 @@
         <width>1280</width>
         <height>960</height>
        </size>
+      </property>
+      <property name="mouseTracking">
+       <bool>true</bool>
       </property>
       <property name="frameShape">
        <enum>QFrame::Box</enum>
@@ -140,8 +683,234 @@
   </widget>
  </widget>
  <tabstops>
+  <tabstop>drpInput</tabstop>
+  <tabstop>drpSize</tabstop>
+  <tabstop>drpFPS</tabstop>
+  <tabstop>spin_color_Hmin</tabstop>
+  <tabstop>spin_color_Hmax</tabstop>
+  <tabstop>spin_color_Smin</tabstop>
+  <tabstop>spin_color_Smax</tabstop>
+  <tabstop>spin_color_Vmin</tabstop>
+  <tabstop>spin_color_Vmax</tabstop>
+  <tabstop>chk_blob_area</tabstop>
+  <tabstop>spin_blob_areaMin</tabstop>
+  <tabstop>spin_blob_areaMax</tabstop>
+  <tabstop>chk_blob_circ</tabstop>
+  <tabstop>spin_blob_circMin</tabstop>
+  <tabstop>spin_blob_circMax</tabstop>
+  <tabstop>chk_blob_conv</tabstop>
+  <tabstop>spin_blob_convMin</tabstop>
+  <tabstop>spin_blob_convMax</tabstop>
+  <tabstop>chk_blob_inertia</tabstop>
+  <tabstop>spin_blob_inertiaMin</tabstop>
+  <tabstop>spin_blob_inertiaMax</tabstop>
+  <tabstop>chk_save_cam</tabstop>
+  <tabstop>chk_save_color</tabstop>
+  <tabstop>chk_save_blob</tabstop>
+  <tabstop>btn_save_settings</tabstop>
+  <tabstop>grpBlob</tabstop>
+  <tabstop>grpColor</tabstop>
+  <tabstop>dial_color_Hmin</tabstop>
+  <tabstop>dial_color_Hmax</tabstop>
+  <tabstop>dial_color_Smin</tabstop>
+  <tabstop>dial_color_Smax</tabstop>
+  <tabstop>dial_color_Vmin</tabstop>
+  <tabstop>dial_color_Vmax</tabstop>
   <tabstop>scrollSettingsContainer</tabstop>
  </tabstops>
  <resources/>
- <connections/>
+ <connections>
+  <connection>
+   <sender>dial_color_Hmin</sender>
+   <signal>valueChanged(int)</signal>
+   <receiver>spin_color_Hmin</receiver>
+   <slot>setValue(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>623</x>
+     <y>327</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>682</x>
+     <y>327</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>spin_color_Hmin</sender>
+   <signal>valueChanged(int)</signal>
+   <receiver>dial_color_Hmin</receiver>
+   <slot>setValue(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>682</x>
+     <y>327</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>623</x>
+     <y>327</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>dial_color_Hmax</sender>
+   <signal>valueChanged(int)</signal>
+   <receiver>spin_color_Hmax</receiver>
+   <slot>setValue(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>740</x>
+     <y>328</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>799</x>
+     <y>327</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>spin_color_Hmax</sender>
+   <signal>valueChanged(int)</signal>
+   <receiver>dial_color_Hmax</receiver>
+   <slot>setValue(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>799</x>
+     <y>327</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>740</x>
+     <y>328</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>dial_color_Smin</sender>
+   <signal>valueChanged(int)</signal>
+   <receiver>spin_color_Smin</receiver>
+   <slot>setValue(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>448</x>
+     <y>442</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>502</x>
+     <y>442</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>spin_color_Smin</sender>
+   <signal>valueChanged(int)</signal>
+   <receiver>dial_color_Smin</receiver>
+   <slot>setValue(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>502</x>
+     <y>442</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>448</x>
+     <y>442</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>dial_color_Smax</sender>
+   <signal>valueChanged(int)</signal>
+   <receiver>spin_color_Smax</receiver>
+   <slot>setValue(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>635</x>
+     <y>442</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>582</x>
+     <y>442</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>spin_color_Smax</sender>
+   <signal>valueChanged(int)</signal>
+   <receiver>dial_color_Smax</receiver>
+   <slot>setValue(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>582</x>
+     <y>442</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>635</x>
+     <y>442</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>dial_color_Vmin</sender>
+   <signal>valueChanged(int)</signal>
+   <receiver>spin_color_Vmin</receiver>
+   <slot>setValue(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>448</x>
+     <y>486</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>502</x>
+     <y>486</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>spin_color_Vmin</sender>
+   <signal>valueChanged(int)</signal>
+   <receiver>dial_color_Vmin</receiver>
+   <slot>setValue(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>502</x>
+     <y>486</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>448</x>
+     <y>486</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>dial_color_Vmax</sender>
+   <signal>valueChanged(int)</signal>
+   <receiver>spin_color_Vmax</receiver>
+   <slot>setValue(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>635</x>
+     <y>486</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>582</x>
+     <y>486</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>spin_color_Vmax</sender>
+   <signal>valueChanged(int)</signal>
+   <receiver>dial_color_Vmax</receiver>
+   <slot>setValue(int)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>582</x>
+     <y>486</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>635</x>
+     <y>486</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
 </ui>
