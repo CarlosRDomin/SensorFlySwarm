@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 
-class MagnitudeControlLog:
+class PidLog:
 	def __init__(self, experiment_start_datetime, str_magnitude="", pid_offset=0):
 		self.lst_timestamp = []
 		self.lst_setpoint = []
@@ -152,15 +152,19 @@ class MagnitudeControlLog:
 			self.pid_offset = data["offset"][()]  # offset was a number, so it becomes a 0-d array in numpy -> [()] is the only way to index it without getting an error =)
 
 
-class OverallControlLog:
+class MagnitudeLog:
+	pass
+
+
+class ExperimentLog:
 	def __init__(self, experiment_start_datetime):
-		self.roll_pos = MagnitudeControlLog(experiment_start_datetime, "Roll_pos")
-		self.roll_vel = MagnitudeControlLog(experiment_start_datetime, "Roll_vel")
-		self.pitch_pos = MagnitudeControlLog(experiment_start_datetime, "Pitch_pos")
-		self.pitch_vel = MagnitudeControlLog(experiment_start_datetime, "Pitch_vel")
-		self.yaw = MagnitudeControlLog(experiment_start_datetime, "Yaw")
-		self.thrust_pos = MagnitudeControlLog(experiment_start_datetime, "Thrust_pos")
-		self.thrust_vel = MagnitudeControlLog(experiment_start_datetime, "Thrust_vel")
+		self.roll_pos = PidLog(experiment_start_datetime, "Roll_pos")
+		self.roll_vel = PidLog(experiment_start_datetime, "Roll_vel")
+		self.pitch_pos = PidLog(experiment_start_datetime, "Pitch_pos")
+		self.pitch_vel = PidLog(experiment_start_datetime, "Pitch_vel")
+		self.yaw = PidLog(experiment_start_datetime, "Yaw")
+		self.thrust_pos = PidLog(experiment_start_datetime, "Thrust_pos")
+		self.thrust_vel = PidLog(experiment_start_datetime, "Thrust_vel")
 		self.magnitudes = [self.roll_pos, self.roll_vel, self.pitch_pos, self.pitch_vel, self.yaw, self.thrust_pos, self.thrust_vel]
 
 	def clear(self):
@@ -213,12 +217,12 @@ class OverallControlLog:
 
 if __name__ == '__main__':
 	from random import random
-	log = MagnitudeControlLog(str(datetime.now())[:-7], "Roll")
+	log = PidLog(str(datetime.now())[:-7], "Roll")
 	for x in range(0, 100):
 		log.update_long(5, 5-random(), 10*random()-2, 3*random()-1.5, random())
 	log.plot()
 	log.save()
-	log2 = MagnitudeControlLog(log.EXPERIMENT_START_DATETIME, log.str_magnitude)
+	log2 = PidLog(log.EXPERIMENT_START_DATETIME, log.str_magnitude)
 	log2.load()
 	log2.plot()
 	log2.save()

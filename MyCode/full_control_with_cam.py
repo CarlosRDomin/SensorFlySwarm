@@ -50,7 +50,7 @@ class DroneController:
 		self.t_events = []
 		self.EXPERIMENT_START_DATETIME = str(self.t_start)[:-7].replace(':', '-')
 		self.VIDEO_FOLDER = "img/{}".format(self.EXPERIMENT_START_DATETIME)
-		self.experiment_log = plot_tools.OverallControlLog(self.EXPERIMENT_START_DATETIME)
+		self.experiment_log = plot_tools.ExperimentLog(self.EXPERIMENT_START_DATETIME)
 		self.window_for_kb_input = None
 		self.video_capture = None
 		self.cv_HSV_thresh_min = np.array([  0,   0,   0], dtype=np.uint8)
