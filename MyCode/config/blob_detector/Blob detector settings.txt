@@ -9,7 +9,7 @@ maxCircularity	1.0
 maxConvexity	1.0
 maxInertiaRatio	1.0
 maxThreshold	255.0
-minArea	30.0
+minArea	20.0
 minCircularity	0.699999988079
 minConvexity	0.699999988079
 minDistBetweenBlobs	3000.0

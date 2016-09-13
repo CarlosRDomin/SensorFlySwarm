@@ -1,9 +1,13 @@
+Demo*
+Poster*
 Crazyflie*
-Posters/
+Mavlink/
 MyCode/cache*/
 MyCode/log/
-MyCode/img/
+MyCode/img-ns/
 MyCode/videos/
+MyCode/CF examples
+MyCode/OpenCV examples
 *.idea
 *.tar.gz
 *.dmg

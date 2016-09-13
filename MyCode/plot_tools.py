@@ -9,18 +9,14 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import PID
 
 
-class PidLog:
-	def __init__(self, experiment_start_datetime, str_magnitude="", pid_offset=0):
+class MagnitudeLog (object):
+	def __init__(self, experiment_start_datetime, str_magnitude=""):
 		self.lst_timestamp = []
-		self.lst_setpoint = []
 		self.lst_measured = []
-		self.lst_out_P = []
-		self.lst_out_I = []
-		self.lst_out_D = []
-		self.pid_offset = pid_offset
-		self.str_magnitude = str_magnitude
+		self.str_magnitude = str_magnitude.replace('_', ' ')  # For plot titles, legends... replace "_" by " " for readability
 		self.EXPERIMENT_START_DATETIME = experiment_start_datetime
 		self.LOG_FILENAME = "log_{}_{}".format(str_magnitude, experiment_start_datetime.replace(':', '-').replace(' ', '_'))
 		self.LOG_FOLDER = "log/{}".format(experiment_start_datetime)
@@ -28,11 +24,7 @@ class PidLog:
 
 	def clear(self):
 		self.lst_timestamp = []
-		self.lst_setpoint = []
 		self.lst_measured = []
-		self.lst_out_P = []
-		self.lst_out_I = []
-		self.lst_out_D = []
 
 	def create_log_dirs(self):
 		if not os.path.exists(self.LOG_FOLDER):
@@ -46,11 +38,79 @@ class PidLog:
 	def get_timestamp(self):
 		return np.array(self.lst_timestamp)
 
-	def get_setpoint(self):
-		return np.array(self.lst_setpoint)
-
 	def get_measured(self):
 		return np.array(self.lst_measured)
+
+	def update(self, measured, timestamp=None):
+		self.lst_measured.append(measured)
+		if timestamp is None:
+			self.lst_timestamp.append(datetime.now())
+		elif isinstance(timestamp, timedelta):  # Can't plot a timedelta axis, so add today's date to convert them to datetime (so we can plot them)
+			self.lst_timestamp.append(timestamp + datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
+		else:
+			self.lst_timestamp.append(timestamp)
+
+	def plot(self):
+		if len(self.lst_measured) < 1:
+			return None
+		if len(self.lst_timestamp) < 1:
+			self.lst_timestamp = [datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(seconds=i) for i in range(0, len(self.lst_measured))]
+
+		fig, ax1 = plt.subplots()
+		ax1.plot(self.get_timestamp(), self.get_measured(), 'b', label=self.str_magnitude, linewidth=2)
+		ax1.set_xlim((min(self.get_timestamp()), max(self.get_timestamp())))
+
+		ax1.grid(True)
+		ax1.set_title(self.str_magnitude, fontsize='x-large', fontweight='bold')
+		ax1.set_xlabel('Time (s)', fontsize='large', fontweight='bold')
+		ax1.set_ylabel(self.str_magnitude, fontsize='large', fontweight='bold')
+
+		plt.ion()
+		ax1.xaxis.set_major_formatter(mdates.DateFormatter('%M:%S'))
+		fig.autofmt_xdate()  # Tilt x-ticks to be more readable
+		figManager = plt.get_current_fig_manager()
+		figManager.window.showMaximized()
+		fig.set_tight_layout(True)
+		fig.show()
+
+		self.create_log_dirs()  # Make sure LOG_FOLDER and SYM_FOLDER exist so saving the figure doesn't raise an exception
+		fig.savefig("{}.pdf".format(self.get_log_filename()))
+		if not os.path.exists("{}.pdf".format(self.get_log_filename(is_sym=True))):  # Create symlink (if not already created, would raise an exception in that case)
+			os.symlink("{}.pdf".format(os.path.abspath(self.get_log_filename())), "{}.pdf".format(self.get_log_filename(is_sym=True)))  # Create a symlink to keep logs organized by date and also by magnitude (make sure symlink source path is absolute!!)
+
+		return fig
+
+	def save(self):
+		self.create_log_dirs()  # Make sure LOG_FOLDER and SYM_FOLDER exist so saving the arrays doesn't raise an exception
+		np.savez_compressed("{}.npz".format(self.get_log_filename()), t=self.get_timestamp(), measured=self.get_measured())
+		if not os.path.exists("{}.npz".format(self.get_log_filename(is_sym=True))):  # Create symlink (if not already created, would raise an exception in that case)
+			os.symlink("{}.npz".format(os.path.abspath(self.get_log_filename())), "{}.npz".format(self.get_log_filename(is_sym=True)))  # Create a symlink to keep logs organized by date and also by magnitude (make sure symlink source path is absolute!!)
+
+	def load(self):
+		with np.load("{}.npz".format(self.get_log_filename())) as data:
+			self.lst_timestamp = list(data["t"])
+			self.lst_measured = list(data["measured"])
+
+
+class PidLog (MagnitudeLog):
+	def __init__(self, experiment_start_datetime, str_magnitude="", pid_offset=0):
+		super(PidLog, self).__init__(experiment_start_datetime, str_magnitude)
+		self.lst_setpoint = []
+		self.lst_out_P = []
+		self.lst_out_I = []
+		self.lst_out_D = []
+		self.pid_offset = pid_offset
+
+	def clear(self):
+		self.lst_timestamp = []
+		self.lst_setpoint = []
+		self.lst_measured = []
+		self.lst_out_P = []
+		self.lst_out_I = []
+		self.lst_out_D = []
+
+	def get_setpoint(self):
+		return np.array(self.lst_setpoint)
 
 	def get_out_P(self):
 		return np.array(self.lst_out_P)
@@ -88,7 +148,7 @@ class PidLog:
 		if len(self.lst_measured) < 1:
 			return None
 		if len(self.lst_timestamp) < 1:
-			self.lst_timestamp = [timedelta(seconds=i) for i in range(0, len(self.lst_measured))]
+			self.lst_timestamp = [datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(seconds=i) for i in range(0, len(self.lst_measured))]
 
 		fig, ax1 = plt.subplots()
 		ax1.plot(self.get_timestamp(), self.get_setpoint(), 'r--', label=self.str_magnitude + ' SetPoint', linewidth=1.5)
@@ -152,71 +212,63 @@ class PidLog:
 			self.pid_offset = data["offset"][()]  # offset was a number, so it becomes a 0-d array in numpy -> [()] is the only way to index it without getting an error =)
 
 
-class MagnitudeLog:
-	pass
-
-
 class ExperimentLog:
-	def __init__(self, experiment_start_datetime):
-		self.roll_pos = PidLog(experiment_start_datetime, "Roll_pos")
-		self.roll_vel = PidLog(experiment_start_datetime, "Roll_vel")
-		self.pitch_pos = PidLog(experiment_start_datetime, "Pitch_pos")
-		self.pitch_vel = PidLog(experiment_start_datetime, "Pitch_vel")
-		self.yaw = PidLog(experiment_start_datetime, "Yaw")
-		self.thrust_pos = PidLog(experiment_start_datetime, "Thrust_pos")
-		self.thrust_vel = PidLog(experiment_start_datetime, "Thrust_vel")
-		self.magnitudes = [self.roll_pos, self.roll_vel, self.pitch_pos, self.pitch_vel, self.yaw, self.thrust_pos, self.thrust_vel]
+	def __init__(self, experiment_start_datetime, log_desc):
+		self.magnitudes = {}
+		for key, value in log_desc.iteritems():
+			value = value.lower()  # Case insensitive comparison to avoid problems
+			if value == "piv":
+				self.magnitudes["{}_pos".format(key.lower())] = PidLog(experiment_start_datetime, "{}_pos".format(key))
+				self.magnitudes["{}_vel".format(key.lower())] = PidLog(experiment_start_datetime, "{}_vel".format(key))
+			elif value == "pid":
+				self.magnitudes[key.lower()] = PidLog(experiment_start_datetime, key)
+			else:
+				self.magnitudes[key.lower()] = MagnitudeLog(experiment_start_datetime, key)
 
 	def clear(self):
-		for m in self.magnitudes:
+		for m in self.magnitudes.itervalues():
 			m.clear()
 
-	def update(self, roll_PID, pitch_PID, yaw_PID, thrust_PID, timestamp=None):
-		if roll_PID is not None:
-			self.roll_pos.update(roll_PID.PIDpos, timestamp)
-			self.roll_vel.update(roll_PID.PIDvel, timestamp)
-		if pitch_PID is not None:
-			self.pitch_pos.update(pitch_PID.PIDpos, timestamp)
-			self.pitch_vel.update(pitch_PID.PIDvel, timestamp)
-		if yaw_PID is not None:
-			self.yaw.update(yaw_PID, timestamp)
-		if thrust_PID is not None:
-			self.thrust_pos.update(thrust_PID.PIDpos, timestamp)
-			self.thrust_vel.update(thrust_PID.PIDvel, timestamp)
-
-	def update_long(self, roll_pos_setpoint, roll_pos_measured, roll_pos_out_P, roll_pos_out_I, roll_pos_out_D,
-					roll_vel_setpoint, roll_vel_measured, roll_vel_out_P, roll_vel_out_I, roll_vel_out_D,
-					pitch_pos_setpoint, pitch_pos_measured, pitch_pos_out_P, pitch_pos_out_I, pitch_pos_out_D,
-					pitch_vel_setpoint, pitch_vel_measured, pitch_vel_out_P, pitch_vel_out_I, pitch_vel_out_D,
-					yaw_setpoint, yaw_measured, yaw_out_P, yaw_out_I, yaw_out_D,
-					thrust_pos_setpoint, thrust_pos_measured, thrust_pos_out_P, thrust_pos_out_I, thrust_pos_out_D,
-					thrust_vel_setpoint, thrust_vel_measured, thrust_vel_out_P, thrust_vel_out_I, thrust_vel_out_D, timestamp=None):
-		self.roll_pos.update_long(roll_pos_setpoint, roll_pos_measured, roll_pos_out_P, roll_pos_out_I, roll_pos_out_D, timestamp)
-		self.roll_vel.update_long(roll_vel_setpoint, roll_vel_measured, roll_vel_out_P, roll_vel_out_I, roll_vel_out_D, timestamp)
-		self.pitch_pos.update_long(pitch_pos_setpoint, pitch_pos_measured, pitch_pos_out_P, pitch_pos_out_I, pitch_pos_out_D, timestamp)
-		self.pitch_vel.update_long(pitch_vel_setpoint, pitch_vel_measured, pitch_vel_out_P, pitch_vel_out_I, pitch_vel_out_D, timestamp)
-		self.yaw.update_long(yaw_setpoint, yaw_measured, yaw_out_P, yaw_out_I, yaw_out_D, timestamp)
-		self.thrust_pos.update_long(thrust_pos_setpoint, thrust_pos_measured, thrust_pos_out_P, thrust_pos_out_I, thrust_pos_out_D, timestamp)
-		self.thrust_vel.update_long(thrust_vel_setpoint, thrust_vel_measured, thrust_vel_out_P, thrust_vel_out_I, thrust_vel_out_D, timestamp)
+	def update(self, **kwargs):
+		timestamp = None if "timestamp" not in kwargs else kwargs["timestamp"]  # Use same timestamp for all updates
+		for key, value in kwargs.iteritems():  # For every item they want to update. Don't surround by try/except, we don't want experiments to accidentally not be recording some of the data
+			key = key.lower()  # Case insensitive comparison to avoid problems
+			if isinstance(value, PID.PIDposAndVel):  # If it's a PIV, update its 2 PidLog's separately
+				self.magnitudes["{}_pos".format(key)].update(value.PIDpos, timestamp)
+				self.magnitudes["{}_vel".format(key)].update(value.PIDvel, timestamp)
+			else:
+				self.magnitudes[key].update(value, timestamp)
 
 	def plot(self, wait=True):
 		plt.ion()
-		for m in self.magnitudes:
+		for m in self.magnitudes.itervalues():
 			m.plot()
 		if wait:
 			while not plt.waitforbuttonpress(timeout=5): pass  # Wait until a key is pressed (waitforbuttonpress will return True if a key was pressed, False if the mouse was clicked)
 
 	def save(self):
-		for m in self.magnitudes:
+		for m in self.magnitudes.itervalues():
 			m.save()
 
 	def load(self):
-		for m in self.magnitudes:
+		for m in self.magnitudes.itervalues():
 			m.load()
 
 
 if __name__ == '__main__':
 	from random import random
+
+	log = MagnitudeLog(str(datetime.now())[:-7], "Roll")
+	for x in range(0, 100):
+		log.update(2*random()-1)
+	log.plot()
+	log.save()
+	log2 = MagnitudeLog(log.EXPERIMENT_START_DATETIME, log.str_magnitude)
+	log2.load()
+	log2.plot()
+	log2.save()
+	print "Save & Load procedures work for MagnitudeLog! :)" if (log.lst_timestamp == log2.lst_timestamp) and (log.lst_measured == log2.lst_measured) else "Ooops, Save & Load for MagnitudeLog still needs some more work... :("
+
 	log = PidLog(str(datetime.now())[:-7], "Roll")
 	for x in range(0, 100):
 		log.update_long(5, 5-random(), 10*random()-2, 3*random()-1.5, random())
@@ -226,5 +278,5 @@ if __name__ == '__main__':
 	log2.load()
 	log2.plot()
 	log2.save()
-	print "Save & Load procedures work! :)" if (log.lst_timestamp == log2.lst_timestamp) and (log.lst_measured == log2.lst_measured) and (log.lst_out_P == log2.lst_out_P) and (log.pid_offset == log2.pid_offset) else "Ooops, Save & Load still needs some more work... :("
+	print "Save & Load procedures work for PidLog! :)" if (log.lst_timestamp == log2.lst_timestamp) and (log.lst_measured == log2.lst_measured) and (log.lst_out_P == log2.lst_out_P) and (log.pid_offset == log2.pid_offset) else "Ooops, Save & Load for PidLog still needs some more work... :("
 	plt.waitforbuttonpress()

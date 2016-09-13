@@ -73,10 +73,16 @@ class UvcCapture(uvc.Capture):
 		try:
 			logging.debug("Loading UVC camera settings from file '{}'".format(file_name))
 			with open(file_name, 'r') as f:
-				cam_name = f.readline()  # Read camera name that the settings were created for. For now, just ignore this
+				cam_name = f.readline().rstrip('\r\n')  # Read camera name that the settings were created for
 				size, fps = f.readline().split(self.SETTINGS_SEPARATOR)
-				self.frame_size = tuple([int(x) for x in size.split(',')])
-				self.frame_rate = int(fps)
+				size = tuple([int(x) for x in size.split(',')])
+				fps = int(fps)
+				try:  # Especially if settings were saved for a different cam_name, exact same frame size or fps might not be avail.
+					self.frame_size = size
+					self.frame_rate = fps
+				except:  # If something fails, just select the best frame mode that meets the criteria (or highest resolution mode if none meet the minimum requirements)
+					logging.info("Couldn't set frame mode to {}x{}@{}fps, selecting best available frame mode. Note that these settings were saved for '{}', is this the same device ('{}')?".format(size[0], size[1], fps, cam_name, self.name))
+					self.select_best_frame_mode(min_fps=fps, min_width=size[0], min_height=size[1])
 				logging.debug("\tLoaded camera settings: frame_size = {}x{}, frame_rate = {} fps".format(self.frame_size[0], self.frame_size[1], self.frame_rate))
 				for line in f:
 					name, value = line.split(self.SETTINGS_SEPARATOR)

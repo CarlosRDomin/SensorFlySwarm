@@ -19,6 +19,7 @@ import cv2
 import numpy as np
 import sdl2
 import sdl2.ext
+import struct
 
 from uvc_capture import UvcCapture
 from operator import attrgetter
@@ -27,7 +28,9 @@ import plot_tools
 
 from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.log import LogConfig
+from cflib.crazyflie.param import ParamTocElement, WRITE_CHANNEL
 from cflib import crtp
+from cflib.crtp.crtpstack import CRTPPort, CRTPPacket
 
 
 class DroneController:
@@ -38,8 +41,9 @@ class DroneController:
 	COLOR_TARGET_TRACKED = (0, 255, 0)
 	COLOR_TARGET_UNTRACKED = (0, 0, 255)
 	FIGURE_NAME = "Output"
-	CAMERA_SETTINGS_FILE = "config/cam_settings/Camera settings - USB 2.0 Camera - Lights on.txt"
-	COLOR_THRESH_SETTINGS_FILE = "config/color_thresh/Color threshold settings - Lights on.txt"
+	SETTINGS_ENVIRONMENT = "Very bright bedroom"
+	CAMERA_SETTINGS_FILE = "config/cam_settings/Camera settings - USB 2.0 Camera - {}.txt".format(SETTINGS_ENVIRONMENT)
+	COLOR_THRESH_SETTINGS_FILE = "config/color_thresh/Color threshold settings - {}.txt".format(SETTINGS_ENVIRONMENT)
 	BLOB_DETECTOR_SETTINGS_FILE = "config/blob_detector/Blob detector settings.txt"
 	SETTINGS_SEPARATOR = UvcCapture.SETTINGS_SEPARATOR  # We save files in a csv type of way
 	ASK_FOR_TARGET_YAW = False
@@ -49,14 +53,12 @@ class DroneController:
 		self.t_start = self.t_frame = self.t_last_frame = datetime.now()
 		self.t_events = []
 		self.EXPERIMENT_START_DATETIME = str(self.t_start)[:-7].replace(':', '-')
-		self.VIDEO_FOLDER = "img/{}".format(self.EXPERIMENT_START_DATETIME)
-		self.experiment_log = plot_tools.ExperimentLog(self.EXPERIMENT_START_DATETIME)
+		self.VIDEO_FOLDER = "img-ns/{}".format(self.EXPERIMENT_START_DATETIME)
+		self.experiment_log = plot_tools.ExperimentLog(self.EXPERIMENT_START_DATETIME, {"Roll": "piv", "Pitch": "piv", "Yaw": "pid", "Thrust": "piv", "Estimated_Z": "log", "Velocity_Z": "log"})
 		self.window_for_kb_input = None
 		self.video_capture = None
 		self.cv_HSV_thresh_min = np.array([  0,   0,   0], dtype=np.uint8)
 		self.cv_HSV_thresh_max = np.array([255, 255, 255], dtype=np.uint8)
-		# self.cv_HSV_thresh_min = np.array([5,  110,  70], dtype=np.uint8)  # Orange ping pong ball - Bright
-		# self.cv_HSV_thresh_max = np.array([25, 255, 255], dtype=np.uint8)  # Orange ping pong ball - Bright
 		self.cv_blob_detect_params = None
 		self.cv_cam_frame = None
 		self.cv_filtered_HSV_mask = None
@@ -69,12 +71,12 @@ class DroneController:
 		self.cf_pos_tracked = False
 		self.cf_taking_off = True
 		self.cf_str_status = "TAKING OFF"
-		self.cf_roll = self.cf_pitch = self.cf_yaw = 0
+		self.cf_roll = self.cf_pitch = self.cf_yaw = self.cf_estimated_z = self.cf_vel_z = 0
 		self.cf_curr_pos = np.array([0, 0, 0])
 		self.cf_PID_roll = PID.PIDposAndVel(posP=0.5, velP=0.05, velI=0.01, vel_offs=0, pos_out_max=300, vel_out_max=30, vel_invert_error=True)
-		self.cf_PID_pitch = PID.PIDposAndVel(posP=0.5, velP=0.3, velI=0.002, vel_offs=0, pos_out_max=30, vel_out_max=30)
+		self.cf_PID_pitch = PID.PIDposAndVel(posP=0.7, velP=0.3, velI=0.002, vel_offs=0, pos_out_max=30, vel_out_max=30)
 		self.cf_PID_yaw = PID.PID(P=0.5, I=0.3, D=0, offs=0, out_max=20, invert_error=True, error_in_degrees=True)
-		self.cf_PID_thrust = PID.PIDposAndVel(posP=1, velP=35, velI=25, vel_offs=41000, pos_out_max=300, vel_out_max=6000, pos_invert_error=True, vel_invert_input=True)
+		self.cf_PID_thrust = PID.PIDposAndVel(posP=1, velP=35, velI=25, vel_offs=43000, pos_out_max=300, vel_out_max=7000, pos_invert_error=True, vel_invert_input=True)
 
 	def init_video_cam_and_cv_algorithm(self, create_video_folder=True):
 		"""
@@ -279,6 +281,7 @@ class DroneController:
 			raise Exception("Unable to establish communication with CrazyFlie after {}s. Given up :(".format(max_timeout))
 		elif not self.cf_radio_connected:
 			raise Exception("Something failed while attempting to connect to the CrazyFlie, exiting.")
+		# self.crazyflie.commander.send_setpoint(0, 0, 0, 0)  # If we successfully connected to the CF, send thrust=0 (new firmware initializes thrustLock=True, only way to unlock it so it executes commands is by setting thrust=0)
 
 	def setup_cf(self):
 		"""
@@ -287,8 +290,14 @@ class DroneController:
 		Doesn't return anything, but raises exceptions if anything goes wrong.
 		"""
 		try:  # Send some default values for CF params
+			self.crazyflie.param.set_value('controller.tiltComp', '{:d}'.format(True))
 			self.crazyflie.param.set_value('flightmode.poshold', '{:d}'.format(False))  # Disable poshold and althold by default
 			self.crazyflie.param.set_value('flightmode.althold', '{:d}'.format(False))
+			self.crazyflie.param.set_value('flightmode.posSet', '{:d}'.format(False))
+			self.crazyflie.param.set_value('flightmode.yawMode', '0')
+			self.crazyflie.param.set_value('flightmode.timeoutStab', '{:d}'.format(1000*60*10))  # Stabilize (rpy=0) CF if doesn't receive a radio command in 10min
+			self.crazyflie.param.set_value('flightmode.timeoutShut', '{:d}'.format(1000*60*20))  # Shutdown CF if doesn't receive a radio command in 20min
+			self.crazyflie.param.set_value('posCtlPid.thrustBase', '{}'.format(self.TAKEOFF_THRUST))
 			self.crazyflie.param.set_value("ring.effect", "1")  # Turn off LED ring
 			self.crazyflie.param.set_value("ring.headlightEnable", "0")  # Turn off LED headlight
 		except Exception as e:
@@ -317,6 +326,9 @@ class DroneController:
 				time.sleep(0.1)
 		self.cf_PID_yaw.SetPoint = self.cf_yaw
 		print "Target yaw set at {:.2f}.".format(self.cf_yaw)
+
+		self.crazyflie.add_port_callback(CRTPPort.CONSOLE, self.print_cf_console)
+		self.crazyflie.commander.send_setpoint(0, 0, 0, 0)  # New firmware version requires to send thrust=0 at least once to "unlock thrust"
 
 	def fly_cf(self):
 		"""
@@ -367,8 +379,9 @@ class DroneController:
 
 		self.video_capture = None  # Destroy the video capture object (this takes care of closing the camera etc.)
 		cv2.destroyAllWindows()  # Close all UI windows that could be open
-		self.window_for_kb_input.hide()
-		sdl2.ext.quit()
+		if self.window_for_kb_input is not None:
+			self.window_for_kb_input.hide()
+			sdl2.ext.quit()
 
 		if save_logs:  # If the experiment didn't crash before starting (the CF ever took off), plot and save the logs
 			self.experiment_log.plot(False)
@@ -440,7 +453,31 @@ class DroneController:
 		self.cf_roll = data['stabilizer.roll']
 		self.cf_pitch = data['stabilizer.pitch']
 		self.cf_yaw = data['stabilizer.yaw']
-		print "\rCurrent yaw: %.2fdeg" % self.cf_yaw,
+		self.cf_estimated_z = data['posEstimatorAlt.estimatedZ']
+		self.cf_vel_z = data['posEstimatorAlt.velocityZ']
+		print "\rCurrent yaw: {:.2f}deg".format(self.cf_yaw),
+
+	def print_cf_console(self, packet):
+		console_text = packet.data.decode('UTF-8')
+		print("Console: {}".format(console_text))
+
+	def send_cf_param(self, complete_name, value):
+		"""
+		Modified version of crazyflie.param.set_value that sends the packet immediately (instead of using a Thread+Queue
+		"""
+		element = self.crazyflie.param.toc.get_element_by_complete_name(complete_name)
+
+		if not element:
+			raise KeyError("Couldn't set {}={}, param is not in the TOC!".format(complete_name, value))
+		elif element.access == ParamTocElement.RO_ACCESS:
+			raise AttributeError("Couldn't set {}={}, param is read-only!".format(complete_name, value))
+		else:
+			varid = element.ident
+			pk = CRTPPacket()
+			pk.set_header(CRTPPort.PARAM, WRITE_CHANNEL)
+			pk.data = struct.pack('<B', varid)
+			pk.data += struct.pack(element.pytype, eval(value))
+			self.crazyflie.send_packet(pk, expected_reply=(tuple(pk.data[0:2])))
 
 	def process_kb_input(self):
 		"""
@@ -479,9 +516,13 @@ class DroneController:
 				elif key == 'h':  # Move down
 					self.cf_PID_thrust.setSetPoint(self.cf_PID_thrust.getSetPoint() + 20)
 				elif key == 'f':  # Toggle altitude hold mode
+					if self.cf_ignore_camera: self.cf_PID_thrust.clear()  # If we were ignoring the camera for Z, thrust PID will have a wrong I component
 					self.cf_ignore_camera = not self.cf_ignore_camera
 					self.cf_str_status = "NO CAM for Z" if self.cf_ignore_camera else "FULL CAM"
-					self.crazyflie.param.set_value('flightmode.althold', '{:d}'.format(self.cf_ignore_camera))
+					# self.crazyflie.param.set_value('flightmode.althold', '{:d}'.format(self.cf_ignore_camera))
+					# while not self.crazyflie.param.param_updater.request_queue.empty():  # Wait for the packet to be sent
+					# 	time.sleep(0.01)
+					self.send_cf_param('flightmode.althold', '{:d}'.format(self.cf_ignore_camera))
 				elif key == 'e':  # Stop taking off and start flying (hover at current position)
 					self.cf_taking_off = False
 					self.cf_str_status = "FLYING"
@@ -492,7 +533,8 @@ class DroneController:
 					self.cf_PID_pitch.clear()
 					self.cf_PID_thrust.clear()
 				else:  # Any other key ends the experiment
-					self.crazyflie.param.set_value('flightmode.althold', '{:d}'.format(False))  # Make sure we're not on althold mode, so sending a thrust 0 will kill the motors and not just descend
+					# self.crazyflie.param.set_value('flightmode.althold', '{:d}'.format(False))  # Make sure we're not on althold mode, so sending a thrust 0 will kill the motors and not just descend
+					self.send_cf_param('flightmode.althold', '{:d}'.format(False))  # Make sure we're not on althold mode, so sending a thrust 0 will kill the motors and not just descend
 					return False
 		return True
 
@@ -562,19 +604,22 @@ class DroneController:
 		self.cf_PID_thrust.update(self.cf_curr_pos[1], self.t_frame)
 
 		# Log all relevant variables after each iteration
-		self.experiment_log.update(self.cf_PID_roll, self.cf_PID_pitch, self.cf_PID_yaw, self.cf_PID_thrust)
+		self.experiment_log.update(roll=self.cf_PID_roll, pitch=self.cf_PID_pitch, yaw=self.cf_PID_yaw, thrust=self.cf_PID_thrust, estimated_z=self.cf_estimated_z, velocity_z=self.cf_vel_z)
 
 		# Send the appropriate roll-pitch-yaw-thrust setpoint depending on the scenario (eg: taking off, stopping, etc.)
 		if self.cf_radio_connected:  # While the experiment is running
 			if self.cf_taking_off:  # If taking off, send a constant RPYT setpoint that will make the CF go up "straight"
-				self.crazyflie.commander.send_setpoint(self.cf_PID_roll.PIDvel.out_offs, self.cf_PID_pitch.PIDvel.out_offs, self.cf_PID_yaw.output, self.TAKEOFF_THRUST)
+				# self.crazyflie.commander.send_setpoint(self.cf_PID_roll.PIDvel.out_offs, self.cf_PID_pitch.PIDvel.out_offs, self.cf_PID_yaw.output, self.TAKEOFF_THRUST)
+				self.crazyflie.commander.send_setpoint(self.cf_PID_roll.PIDvel.out_offs, self.cf_PID_pitch.PIDvel.out_offs, 0, self.TAKEOFF_THRUST)
 			else:  # This condition holds ever after take off (once the user presses the key to start "flying")
 				if self.cf_ignore_camera:  # If user selected it, control the drone in althold mode (altitude is done on-board, rest is still controlled with the cam)
-					self.crazyflie.commander.send_setpoint(self.cf_PID_roll.getOutput(), self.cf_PID_pitch.getOutput(), self.cf_PID_yaw.output, 32767)
+					# self.crazyflie.commander.send_setpoint(self.cf_PID_roll.getOutput(), self.cf_PID_pitch.getOutput(), self.cf_PID_yaw.output, 32767)
+					self.crazyflie.commander.send_setpoint(self.cf_PID_roll.getOutput(), self.cf_PID_pitch.getOutput(), 0, 32767)
 				elif not self.cf_pos_tracked:  # If we couldn't find the drone, don't send any commands (not to mislead it)
 					pass
 				else:  # Otherwise, just use the camera to control all 4 independent axes
-					self.crazyflie.commander.send_setpoint(self.cf_PID_roll.getOutput(), self.cf_PID_pitch.getOutput(), self.cf_PID_yaw.output, self.cf_PID_thrust.getOutput())
+					# self.crazyflie.commander.send_setpoint(self.cf_PID_roll.getOutput(), self.cf_PID_pitch.getOutput(), self.cf_PID_yaw.output, self.cf_PID_thrust.getOutput())
+					self.crazyflie.commander.send_setpoint(self.cf_PID_roll.getOutput(), self.cf_PID_pitch.getOutput(), 0, self.cf_PID_thrust.getOutput())
 		else:  # If the user has decided to end the experiment, kill the motors and reset PIDs (this is not really necessary)
 			self.crazyflie.commander.send_setpoint(0, 0, 0, 0)
 			self.cf_PID_roll.clear()
@@ -624,7 +669,7 @@ class DroneController:
 		mask_resized = cv2.resize(self.cv_filtered_HSV_mask, None, fx=img_resize_factor, fy=img_resize_factor)
 
 		# Save the original camera frame to disk (for post-debugging if necessary)
-		cv2.imwrite(os.path.join(self.VIDEO_FOLDER, self.t_frame.strftime("frame_%H-%M-%S-%f.jpg")), self.cv_cam_frame if save_cam_frame_before_resizing else frame_resized)
+		###### cv2.imwrite(os.path.join(self.VIDEO_FOLDER, self.t_frame.strftime("frame_%H-%M-%S-%f.jpg")), self.cv_cam_frame if save_cam_frame_before_resizing else frame_resized)
 		self.t_events.append(datetime.now())
 
 		# Plot OSD related to CF's current and target positions (2 circles and a connecting line)
