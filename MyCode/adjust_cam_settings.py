@@ -5,17 +5,18 @@
 	if there were multiple, corresponds to the drone). The tool also allows to save all these values to a file.
 """
 
-import uvc
-import cv2
 import numpy as np
-from datetime import datetime
+import cv2
+import re
 import sys
 from os import path
+from datetime import datetime
 from uvc_capture import UvcCapture
-from full_control_with_cam import DroneController
-from PyQt5.QtWidgets import QApplication, QSpinBox, QSpacerItem, QSizePolicy, QCheckBox, QAbstractSpinBox, QFileDialog, QMessageBox
-from PyQt5.QtGui import QImage, QPixmap, QResizeEvent, QMouseEvent
+from full_control_with_cam import Spotter, FakeWorkerDrone, FakeVideoCapture
+from calibrate_cam_params import CALIB_FOLDER
 from PyQt5.QtCore import Qt, QThread, QTimer, pyqtSignal, pyqtSlot, QSize, QObject, QEvent
+from PyQt5.QtGui import QImage, QPixmap, QResizeEvent, QMouseEvent
+from PyQt5.QtWidgets import QApplication, QSpinBox, QSpacerItem, QSizePolicy, QCheckBox, QAbstractSpinBox, QFileDialog, QMessageBox
 from PyQt5.uic import loadUi
 import logging
 logging.disable(logging.DEBUG)
@@ -50,10 +51,10 @@ class CamDeviceListRefresher(QThread):
 	def run(self):
 		while not self.done:
 			logging.info("Scanning for new devices...")
-			dev_list = uvc.device_list()   # Find available devices
-			if self.dev_list != dev_list:  # If found a new device or an old device was disconnected
-				self.dev_list = dev_list   # Update the list of devices
-				self.sig_new_dev.emit()    # And fire a signal
+			dev_list = UvcCapture.device_list()  # Find available devices
+			if self.dev_list != dev_list:        # If found a new device or an old device was disconnected
+				self.dev_list = dev_list         # Update the list of devices
+				self.sig_new_dev.emit()          # And fire a signal
 				print "Compatible devices found:\n\t" + str(self.dev_list)
 			self.sleep(self.REFRESH_RATE)
 
@@ -63,7 +64,9 @@ class CamFrameGrabberThread(QThread):
 	This class implements a background task that constantly grabs new frames from the selected camera
 	"""
 
-	DEFAULT_CAM = "USB 2.0 Camera"
+	DEFAULT_CAM_NAME = "None"  # "USB 2.0 Camera"
+	DEFAULT_CAM_VEND_ID = -1  # 1443
+	DEFAULT_CAM_PROD_ID = -1  # 37424
 	DEFAULT_FPS = 60
 	FPS_ESTIMATION_ALPHA = 0.98
 	FRAME_SIZE_STR_SPLITTER = " x "
@@ -76,10 +79,15 @@ class CamFrameGrabberThread(QThread):
 	def __init__(self):
 		QThread.__init__(self)
 		self.done = False
-		self.dev_selected_name = self.DEFAULT_CAM
+		self.dev_selected_name = self.DEFAULT_CAM_NAME
+		self.dev_selected_vend_id = self.DEFAULT_CAM_VEND_ID
+		self.dev_selected_prod_id = self.DEFAULT_CAM_PROD_ID
 		self.cap = None
 		self.qPix = QPixmap(1, 1)
-		self.cv = DroneController()
+		self.cv = Spotter()
+		self.cv.workers.append(FakeWorkerDrone())  # Add a fake worker (we just need the cv algorithm to look for 1 ping pong ball)
+		self.cv.video_capture = FakeVideoCapture()
+		self.cv.world_to_camera_transf = np.hstack((np.eye(3), np.zeros((3, 1))))
 		self.cv.load_color_thresh_settings()
 		self.cv.load_blob_detector_settings()
 		self.cv_do_color = True
@@ -106,13 +114,15 @@ class CamFrameGrabberThread(QThread):
 	@pyqtSlot(str)
 	def change_selected_device(self, dev_selected):
 		if self.dev_selected_name != dev_selected: logging.info("New device selected: {}".format(dev_selected))
-		self.dev_selected_name = str(dev_selected)
+		self.dev_selected_name, self.dev_selected_vend_id, self.dev_selected_prod_id = cam_str_to_info(dev_selected)
 
 	@pyqtSlot(str, bool)
 	def change_cam_frame_size(self, new_frame_size, emit_signal):
 		if self.cap is not None and window.drpSize.count() > 0:  # Sanity check (in case capture device was just closed or we're clearing drpSize to re-add available sizes)
 			logging.info("Changing frame size to {}".format(new_frame_size))
+			self.cap.do_undistort = False  # Pause undistortion while frame_size is changing to avoid problems in the frame capture thread
 			self.cap.frame_size = tuple([int(x) for x in new_frame_size.split(self.FRAME_SIZE_STR_SPLITTER)])
+			self.cap.init_undistort_maps(self.cap.calib_file)
 			if emit_signal:  # If the user was the one who clicked on this combobox item (as opposed to me, manually from the code), update cam UI
 				self.sig_update_cam_ui.emit()  # drpFPS might need to be updated (different frame sizes might have different fps available)
 
@@ -190,7 +200,7 @@ class CamFrameGrabberThread(QThread):
 		while not self.done:
 			self.sleep(1)  # Outer while loop just waits until a device is selected
 
-			self.cap = UvcCapture(self.dev_selected_name)
+			self.cap = UvcCapture(self.dev_selected_name, self.dev_selected_vend_id, self.dev_selected_prod_id)
 			if self.cap is None:  # If we didn't find the desired cam, don't continue
 				self.qPix = QPixmap(1, 1)  # Default to a black pixel
 				self.cv_evaluate_px_value = np.array([0, 0, 0], dtype=np.uint8)
@@ -212,21 +222,20 @@ class CamFrameGrabberThread(QThread):
 
 			self.actual_fps = self.cap.frame_rate
 			tt = datetime.now()  # Initialize tt (used to estimate actual frame rate) to prevent an error on the first loop iteration
-			while self.cap.name == self.dev_selected_name:  # Run an inner while loop to capture frames as long as the selected device is kept constant
+			while self.cap.name == self.dev_selected_name and self.cap.vend_id == self.dev_selected_vend_id and self.cap.prod_id == self.dev_selected_prod_id:  # Run an inner while loop to capture frames as long as the selected device is kept constant
 				ok = False
 				t = datetime.now()
-				for a in range(5):
+				for a in range(3):
 					try:
 						frame = self.cap.get_frame_robust()
 						self.index = frame.index
-						# logging.debug("DEBUG - Successfully got frame {:d} after {:d} tries".format(frame.index, a+1))
 						ok = True
 						break
-					except uvc.CaptureError as e:
+					except Exception as e:
 						logging.error('DEBUG - Could not get Frame. Error: "{}". Tried {} time{}.'.format(e.message, a+1, "s" if a > 0 else ""))
 				if not ok:
-					self.sig_error.emit("Couldn't get camera frame after 5 tries, reconnecting...")
-					break  # Exit inner loop (force an iteration on the outer loop) after 5 consecutive failed attempts to grab a frame
+					self.sig_error.emit("Couldn't get camera frame after 3 tries, reconnecting...")
+					break  # Exit inner loop (force an iteration on the outer loop) after 3 consecutive failed attempts to grab a frame
 
 				# We successfully grabbed a frame, let's store the value of the pixel cv_evaluate_px_at for debugging purposes
 				try:
@@ -237,12 +246,12 @@ class CamFrameGrabberThread(QThread):
 				# Now we can run the CF detection algorithm on it (if grpColor is checked) and modify frame.bgr if we want
 				t2 = datetime.now()
 				if self.cv_do_color:
-					self.cv.detect_cf_in_camera(frame.bgr, self.cv_do_blob)  # Run CF detection (and blob detection if checked)
+					cf_curr_pos = self.cv.detect_cf_in_camera(frame.bgr, self.cv_do_blob)[0]  # Run CF detection (and blob detection if checked)
 
 					# Now overlay the mask over the camera frame
 					t3 = datetime.now()
-					if self.cv.cf_pos_tracked and self.cv_do_blob:
-						cv2.circle(self.cv.cv_cam_frame, tuple(self.cv.cf_curr_pos[0:2].astype(int)), int(self.cv.cf_curr_pos[2]+5), [0, 255, 0], -1)
+					if cf_curr_pos is not None and self.cv_do_blob:
+						cv2.circle(self.cv.cv_cam_frame, tuple(cf_curr_pos[0:2].astype(int)), int(cf_curr_pos[2]+5), [0, 255, 0], -1)
 					# np.putmask(self.cv.cv_cam_frame[:,:,0], self.cv.cv_filtered_HSV_mask, 255)
 					# np.putmask(self.cv.cv_cam_frame[:,:,1], self.cv.cv_filtered_HSV_mask, 0)
 					# np.putmask(self.cv.cv_cam_frame[:,:,2], self.cv.cv_filtered_HSV_mask, 255)
@@ -338,6 +347,29 @@ def remove_all_layout_children(layout):
 		else:  # Unless it is a nested layout, in which case recursively delete all its children
 			remove_all_layout_children(item.layout())
 
+def cam_info_to_str(cam_name, cam_vend_id, cam_prod_id):
+	"""
+	Converts camera info (name, vendor id and product id) to a human-friendly string.
+	:param cam_name: Camera name, as provided by the uvc library
+	:param cam_vend_id: Camera vendor id, as provided by the uvc library
+	:param cam_prod_id: Camera product id, as provided by the uvc library
+	:return: String containing the name, vendor id and product id of the camera in a human-friendly format.
+	"""
+	return "{} ({}, {})".format(cam_name, cam_vend_id, cam_prod_id)
+
+def cam_str_to_info(cam_str):
+	"""
+	Parses the camera information from a string generated by cam_info_to_str().
+	:param cam_str: String containing camera name, vendor id and product id, generated using cam_info_to_str()
+	:return: A tuple containing the camera name, vendor id and product id.
+	"""
+	# info = re.search('^(.+) \(([---0-9]+)[^---0-9]+([---0-9]+)\)$', str(cam_str))  # Use this one to accept negative vend and prod ids (<0 means accept any that matches the cam name)
+	info = re.search('^(.+) \(([0-9]+)[^0-9]+([0-9]+)\)$', cam_str)
+	if info is None:
+		return "None", -1, -1
+
+	return str(info.group(1)), int(info.group(2)), int(info.group(3))
+
 @pyqtSlot(str)
 def show_error_message(str_msg):
 	logging.error("Showing error message: '{}'".format(str_msg))
@@ -406,8 +438,9 @@ def refresh_cam_device_list():
 	window.drpInput.clear()
 	window.drpInput.addItem("None")  # Add a 'None' item so user can turn off camera
 	for dev in threadDevLister.dev_list:
-		window.drpInput.addItem(dev['name'])
-		if dev['name'] == old_dev_selected:
+		txt = cam_info_to_str(dev['name'], dev['idVendor'], dev['idProduct'])
+		window.drpInput.addItem(txt)
+		if txt == old_dev_selected:
 			window.drpInput.setCurrentIndex(window.drpInput.count()-1)
 	threadFrameGrabber.sig_new_dev_selected.emit(window.drpInput.currentText())
 
@@ -497,14 +530,15 @@ def save_current_settings():
 			continue
 
 		settings_desc = chk.text().replace("Save ", "").capitalize()  # Description of the settings (eg: Color threshold)
-		default_file_name = settings_desc if chk != window.chk_save_cam else "{} - {}".format(settings_desc, threadFrameGrabber.dev_selected_name)
+		default_file_name = settings_desc if chk != window.chk_save_cam else "{} - {} - {} - {}".format(settings_desc, threadFrameGrabber.dev_selected_name, threadFrameGrabber.dev_selected_vend_id, threadFrameGrabber.dev_selected_prod_id)
 		file_name, _ = QFileDialog.getSaveFileName(window, "Save current {} to a file".format(settings_desc.lower()),
 			path.join(path.dirname(path.abspath(default_path)), default_file_name), "{} (*.txt)".format(settings_desc))
 
 		if file_name:
 			result = False  # Initialize result variable to keep track of the saving settings outcome
 			if chk == window.chk_save_cam and threadFrameGrabber.cap is not None:
-				result = threadFrameGrabber.cap.save_settings(file_name)
+				calib_file_name, _ = QFileDialog.getOpenFileName(window, "Do you want to include a reference to the camera calibration file in the settings?", path.abspath(CALIB_FOLDER), "NumPy Compressed Array format (*.npz)")
+				result = threadFrameGrabber.cap.save_settings(file_name, calib_file_name)
 			elif chk == window.chk_save_color:
 				result = threadFrameGrabber.cv.save_color_thresh_settings(threadFrameGrabber.cv.cv_HSV_thresh_min, threadFrameGrabber.cv.cv_HSV_thresh_max, file_name)
 			elif chk == window.chk_save_blob:
@@ -590,7 +624,7 @@ if __name__ == '__main__':
 	# threadFrameGrabber.sig_new_img.connect(repaint_cam_img)  # No need to do this anymore, now have a timer repainting:
 	timer_repaint = QTimer()
 	timer_repaint.timeout.connect(repaint_cam_img)
-	timer_repaint.start()  # Delay of 0ms = Execute as soon as the event loop is done processing (as often as possible)
+	timer_repaint.start(50)  # Delay of 0ms = Execute as soon as the event loop is done processing (as often as possible)
 
 	# Finally, start background threads
 	threadDevLister.start()

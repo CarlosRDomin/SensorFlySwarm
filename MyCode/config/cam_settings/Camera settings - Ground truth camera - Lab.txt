@@ -1,8 +1,8 @@
-USB 2.0 Camera	-1	-1	cam_calibration/cam_calibration_output_spotter.npz
-1280,720	60
+USB 2.0 Camera	1443	37922	cam_calibration/cam_calibration_output_IR.npz
+1920,1080	30
 Auto Exposure Mode	1
 Auto Exposure Priority	0
-Absolute Exposure Time	63
+Absolute Exposure Time	85
 Backlight Compensation	0
 Brightness	0
 Contrast	36
@@ -10,7 +10,7 @@ Gain	0
 Power Line frequency	1
 Hue	0
 Saturation	60
-Sharpness	0
+Sharpness	6
 Gamma	125
-White Balance temperature	3225
+White Balance temperature	2800
 White Balance temperature,Auto	0

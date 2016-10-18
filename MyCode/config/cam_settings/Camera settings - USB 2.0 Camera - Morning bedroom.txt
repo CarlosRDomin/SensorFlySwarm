@@ -1,8 +1,8 @@
-USB 2.0 Camera
+USB 2.0 Camera	-1	-1	cam_calibration/cam_calibration_output_spotter.npz
 1280,720	60
 Auto Exposure Mode	1
 Auto Exposure Priority	0
-Absolute Exposure Time	90
+Absolute Exposure Time	85
 Backlight Compensation	0
 Brightness	0
 Contrast	36

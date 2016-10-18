@@ -4,12 +4,12 @@
 	Also allows to save the figure to a file.
 """
 
-from datetime import datetime, timedelta
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import PID
+from datetime import datetime, timedelta
 
 
 class MagnitudeLog (object):
@@ -18,7 +18,7 @@ class MagnitudeLog (object):
 		self.lst_measured = []
 		self.str_magnitude = str_magnitude.replace('_', ' ')  # For plot titles, legends... replace "_" by " " for readability
 		self.EXPERIMENT_START_DATETIME = experiment_start_datetime
-		self.LOG_FILENAME = "log_{}_{}".format(str_magnitude, experiment_start_datetime.replace(':', '-').replace(' ', '_'))
+		self.LOG_FILENAME = "log_{}_{}".format(str_magnitude, experiment_start_datetime.replace(':', '-').replace(' ', '_').replace('/', '_'))
 		self.LOG_FOLDER = "log/{}".format(experiment_start_datetime)
 		self.SYM_FOLDER = "log/{}".format(str_magnitude)
 
@@ -256,6 +256,14 @@ class ExperimentLog:
 
 
 if __name__ == '__main__':
+	radio_ch = 75
+	experiment_start_datetime = "2016-10-17 04-24-50"
+	experiment_log = ExperimentLog("{}/{}".format(radio_ch, experiment_start_datetime), {"Yaw": "log", "pX": "piv", "pY": "piv", "pZ": "piv"})
+	experiment_log.load()
+	experiment_log.plot()
+	exit()
+
+
 	from random import random
 
 	log = MagnitudeLog(str(datetime.now())[:-7], "Roll")

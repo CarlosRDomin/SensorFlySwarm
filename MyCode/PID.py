@@ -9,7 +9,6 @@
 		which looks at current velocity and acts upon it by providing a reaction acceleration.
 """
 
-
 from datetime import datetime, timedelta
 
 class PID:

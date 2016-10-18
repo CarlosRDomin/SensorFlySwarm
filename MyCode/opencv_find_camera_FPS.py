@@ -2,10 +2,10 @@
 	Simple script to estimate camera frame-rate (FPS) using OpenCV (it just tries to read frames as fast as possible).
 """
 
-import cv2
 import numpy as np
-from datetime import datetime, timedelta
+import cv2
 import os
+from datetime import datetime, timedelta
 
 
 def find_FPS(cam_id=0, test_len=10.0, saveimg=False, saveimgFolder="fps_test"):

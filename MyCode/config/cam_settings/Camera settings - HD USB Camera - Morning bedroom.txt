@@ -1,16 +1,16 @@
-USB 2.0 Camera
-1280,720	60
+HD USB Camera	-1	-1
+800,600	30
 Auto Exposure Mode	1
 Auto Exposure Priority	0
-Absolute Exposure Time	120
+Absolute Exposure Time	79
 Backlight Compensation	0
 Brightness	0
-Contrast	32
-Gain	5
-Power Line frequency	2
+Contrast	36
+Gain	0
+Power Line frequency	1
 Hue	0
-Saturation	65
+Saturation	60
 Sharpness	0
 Gamma	125
-White Balance temperature	3750
+White Balance temperature	3836
 White Balance temperature,Auto	0

@@ -1,14 +1,12 @@
 Demo*
 Poster*
 Crazyflie*
-Mavlink/
-MyCode/cache*/
+Mavlink/*
+MyCode/cache*
 MyCode/log/
 MyCode/img-ns/
-MyCode/videos/
-MyCode/CF examples
-MyCode/OpenCV examples
+MyCode/videos/2*
+MyCode/cam_calibration/cam_calibration_input_*
 *.idea
 *.tar.gz
-*.dmg
 *.pyc
