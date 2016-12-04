@@ -1,3 +1,8 @@
+"""
+	Helper functions for vision stuff: coordinate transforms (distorted, undistorted, camera and world frames of reference)
+	and calibration-related methods (find chessboard pattern, find focal length, compute extrinsic transformation...)
+"""
+
 import numpy as np
 import cv2
 
@@ -212,16 +217,31 @@ def find_calib_pattern(img, is_chessboard, pattern_grid_or_cell_size=0.02):
 	return found, corners
 
 def find_world_to_cam_and_F(img, camera_matrix_or_calib_file, dist_coefs=None, is_chessboard=False, pattern_grid_or_cell_size=0.02, pattern_points=None):
+	"""
+	Looks for the calibration pattern in the given image and computes the world->cam transform as well as the camera's focal length.
+	:param img: Input image where the calibration pattern wants to be found.
+	:param camera_matrix_or_calib_file: If str, indicates the name of the calibration file to load camera_matrix and dist_coefs from.
+	Otherwise, should be a 3x3 np.matrix containing the intrisics of the camera model.
+	:param dist_coefs: 1x5 np.array containing the distortion coefficients of the lens [k1, k2, p1, p2, k3]
+	(ignored if camera_matrix_or_calib_file is str).
+	:param is_chessboard: True if the calibration pattern is a chessboard. False, for asymmetric circle grid.
+	:param pattern_grid_or_cell_size: If not a tuple, indicates the distance (in m) between two consecutive points in the pattern grid;
+	If a tuple, it already indicates the pattern grid and pattern_grid_or_cell_size and pattern_points will be returned unmodified.
+	:param pattern_points: If pattern_grid_or_cell_size is not a tuple, it has no effect (leave as None);
+	Otherwise, should be a Nx3 np.array containing the location of each point of the grid in world coordinates.
+	:return: world_to_camera_transf: 3x4 extrinsic matrix from the camera model (indicates world->cam transform); and
+	F: Focal length of the camera: apparent length (in px) of an object that measures "x" m and is placed "x" m away from the camera.
+	"""
 	world_to_camera_transf = F = None  # Initialize default values
 	camera_matrix, dist_coefs = get_cam_matrix_and_dist_coefs(camera_matrix_or_calib_file, dist_coefs)
 	pattern_grid, pattern_points = get_calib_pattern_info(is_chessboard, pattern_grid_or_cell_size, pattern_points)
 
 	found, corners = find_calib_pattern(img, is_chessboard, pattern_grid)  # Look for calibration pattern
 	if found:
-		world_to_camera_transf = find_world_to_cam_transform(pattern_points, corners, camera_matrix_or_calib_file, dist_coefs)
+		world_to_camera_transf = find_world_to_cam_transform(pattern_points, corners, camera_matrix, dist_coefs)
 
 		# In order to compute F, we will measure the distance between the first 2 pattern_points, both in px and m
-		undist_corners = dist_to_undist_img_coords(corners[0:2], camera_matrix_or_calib_file, dist_coefs)  # First, undistort the location of the first 2 pattern_points in px (corners[0] and corners[1])
+		undist_corners = dist_to_undist_img_coords(corners[0:2], camera_matrix, dist_coefs)  # First, undistort the location of the first 2 pattern_points in px (corners[0] and corners[1])
 		radius_in_px = np.linalg.norm(undist_corners[1,:] - undist_corners[0,:])
 		radius_in_m = np.linalg.norm(pattern_points[1]-pattern_points[0])
 		dist_in_m = world_to_cam_coords((pattern_points[1]-pattern_points[0])/2, world_to_camera_transf)[2]  #Measure the distance to the middle point between the first 2 pattern points
@@ -230,17 +250,33 @@ def find_world_to_cam_and_F(img, camera_matrix_or_calib_file, dist_coefs=None, i
 	return world_to_camera_transf, F
 
 def find_world_to_cam_transform(world_points, img_points, camera_matrix_or_calib_file, dist_coefs=None, is_dist_img_coords=True):
+	"""
+	Computes the optimal world->cam transform from a set of corresponding points in world and image coordinates.
+	:param world_points: Nx3 np.array containing the location of a set of known points in world coordinates.
+	:param img_points: Nx3 np.array containing the location of a set of known points in image coordinates.
+	:param camera_matrix_or_calib_file: If str, indicates the name of the calibration file to load camera_matrix and dist_coefs from.
+	Otherwise, should be a 3x3 np.matrix containing the intrisics of the camera model.
+	:param dist_coefs: 1x5 np.array containing the distortion coefficients of the lens [k1, k2, p1, p2, k3]
+	(ignored if camera_matrix_or_calib_file is str).
+	:param is_dist_img_coords: True if provided img_points are *distorted*; False if img_points are *undistorted*.
+	:return: 3x4 extrinsic matrix from the camera model (indicates world->cam transform).
+	"""
 	camera_matrix, dist_coefs = get_cam_matrix_and_dist_coefs(camera_matrix_or_calib_file, dist_coefs)
 	if not is_dist_img_coords:  # img_coords need to be in *distorted* image coords. If undistorted, distort first.
 		img_points = undist_to_dist_img_coords(img_points, camera_matrix, dist_coefs)
 
-	_, rvecs, tvecs = cv2.solvePnP(world_points, img_points, camera_matrix, dist_coefs)
+	_, rvecs, tvec = cv2.solvePnP(world_points, img_points, camera_matrix, dist_coefs)
 	rotation_matrix = np.matrix(cv2.Rodrigues(rvecs)[0])
-	translation_vector = np.matrix(tvecs)
+	translation_vector = np.matrix(tvec)
 
 	return np.matrix(np.hstack((rotation_matrix, translation_vector)))  # Compose the world->cam transformation matrix
 
 def get_cam_to_world_transform(world_to_camera_transf):
+	"""
+	Obtains the cam->world transformation matrix from the world->cam matrix.
+	:param world_to_camera_transf: 3x4 extrinsic matrix from the camera model (indicates world->cam transform).
+	:return: 3x4 matrix with the cam->world transformation matrix (the inverse transformation of world_to_camera_transf)
+	"""
 	# This is just the inverse of world->cam_transf. So we invert the rotation first (transpose of the world->cam rotation matrix)
 	rotation_matrix_inv = world_to_camera_transf[0:3, 0:3].T
 
@@ -250,6 +286,11 @@ def get_cam_to_world_transform(world_to_camera_transf):
 	return np.matrix(np.hstack((rotation_matrix_inv, translation_vector_inv)))  # Compose the cam->world transformation matrix
 
 def get_rvecs_and_tvec(world_to_camera_transf):
+	"""
+	Obtains rvecs and tvec from the world->cam transform matrix (reverse step of find_world_to_cam_transform)
+	:param world_to_camera_transf: 3x4 extrinsic matrix from the camera model (indicates world->cam transform).
+	:return: 3x1 np.array rvecs (rotation vector) and 3x1 (translation vector) to transform world to camera points.
+	"""
 	# Use Rodrigues to convert back and forth between rotation matrix and rvecs. Obtain the rotation matrix from the extrinsic matrix (world->camera transform)
 	rvecs, _ = cv2.Rodrigues(np.matrix(world_to_camera_transf[0:3, 0:3], float))
 

@@ -1,3 +1,7 @@
+"""
+	WIP script that communicates with an ArduPilot/PX4 using MAV protocol to arm the motors and fly.
+"""
+
 import logging
 import sys, os
 from optparse import OptionParser

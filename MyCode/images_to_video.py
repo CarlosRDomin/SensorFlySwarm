@@ -59,4 +59,4 @@ def generate_video_from_images(img_folder_or_filelist, video_folder="videos", vi
 
 
 if __name__ == '__main__':
-	generate_video_from_images(os.path.join("img", "2016-08-16 23-31-57"), video_fps=25, img_filelist_prefix="out_")
+	generate_video_from_images(os.path.join("img-ns", "2016-11-03 03-05-11"), video_fps=20, img_filelist_prefix="out_")
