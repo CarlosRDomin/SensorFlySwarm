@@ -103,7 +103,7 @@ class UvcCapture(uvc.Capture):
 		"""
 		str_cam_name = "'{}'".format(cam_name) if isinstance(cam_name, str) else str(cam_name)  # Surround by quotes if cam_name is str, otherwise (int) simply convert to str and use the number to identify the camera
 		if cam_vend_id >= 0 or cam_prod_id >= 0 or cam_serial_num is not None:
-			str_cam_name += " [{}]".format(str_cam_name, ", ".join(["" if cam_vend_id < 0 else "VID:{}".format(cam_vend_id), "" if cam_prod_id < 0 else "PID:{}".format(cam_prod_id), "" if cam_serial_num is None else "#{}".format(cam_serial_num)]))
+			str_cam_name += " [{}]".format(", ".join(["" if cam_vend_id < 0 else "VID:{}".format(cam_vend_id), "" if cam_prod_id < 0 else "PID:{}".format(cam_prod_id), "" if cam_serial_num is None else "#{}".format(cam_serial_num)]))
 
 		return str_cam_name
 

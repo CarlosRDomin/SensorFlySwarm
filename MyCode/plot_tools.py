@@ -93,7 +93,7 @@ class MagnitudeLog (object):
 			ax1.xaxis.set_major_formatter(mdates.DateFormatter('%M:%S'))
 			fig.autofmt_xdate()  # Tilt x-ticks to be more readable
 		figManager = plt.get_current_fig_manager()
-		figManager.window.showMaximized()
+		# figManager.window.showMaximized()
 		fig.set_tight_layout(True)
 		fig.show()
 
@@ -240,7 +240,7 @@ class PidLog (MagnitudeLog):
 		ax1.xaxis.set_major_formatter(mdates.DateFormatter('%M:%S'))
 		fig.autofmt_xdate()  # Tilt x-ticks to be more readable
 		figManager = plt.get_current_fig_manager()
-		figManager.window.showMaximized()
+		# figManager.window.showMaximized()
 		fig.set_tight_layout(True)
 		fig.show()
 
@@ -358,12 +358,101 @@ class ExperimentLog:
 			setattr(self.magnitudes[str_magnitude.lower()], key, value)
 
 
+class DerivativeHelper:
+	"""
+	This class contains helper functions to calculate a filtered derivative (e.g., velocity and acceleration from position).
+	Based on this answer http://dsp.stackexchange.com/questions/9498/have-position-want-to-calculate-velocity-and-acceleration
+	"""
+
+	@staticmethod
+	def sg_filter(x, m, k=0):
+		"""
+		Savitzky-Golay Filter (http://dsp.stackexchange.com/questions/1676/savitzky-golay-smoothing-filter-for-not-equally-spaced-data/9494#9494)
+		:param x: Vector of sample times
+		:param m: Order of the smoothing polynomial
+		:param k: Which derivative
+		:return: Vector (np.array) containing the corresponding Savitzky-Golay Filter
+		"""
+		mid = len(x)/2
+		if isinstance(x[0], datetime):  # Errors will be raised when working with timedeltas, so in case of datetime input, convert timedelta to float
+			a = np.array([(t - x[mid]).total_seconds() for t in x])
+		else:
+			a = np.array(x) - x[mid]
+		expa = lambda x: map(lambda i: i ** x, a)
+		A = np.r_[map(expa, range(0, m + 1))].transpose()
+		Ai = np.linalg.pinv(A)
+
+		return Ai[k]
+
+	@staticmethod
+	def differentiate(signal, t, win_size=5, poly_order=2, deriv=0):
+		"""
+		Calculates a filtered derivative (e.g., velocity and acceleration from position). Crops input signal if necessary (no need to pass a segment of length=win_size).
+		:param signal: Signal to differentiate
+		:param t: Times at which signal was sampled
+		:param win_size: Number of points for the smoothing window (window will have 2*win_size + 1 points)
+		:param poly_order: Order of the smoothing polynomial
+		:param deriv: Order of the derivative to compute (e.g., from pos: deriv=1 is vel, deriv=2 is accel...)
+		:return: Estimation of d(signal)/dt at the center of the smoothing window (so at t[-win_size])
+		"""
+
+		if deriv > poly_order: raise Exception("deriv must be <= poly_order!")
+
+		start_ind = max(0, len(signal)-(2*win_size + 1))  # Get last 2*win_size+1 points of the singal (or the whole signal if len(signal) is shorter)
+		f = DerivativeHelper.sg_filter(t[start_ind:], poly_order, deriv)  # Compute the Savitzky-Golay Filter
+		result = np.dot(f, signal[start_ind:])  # And apply the filter to the (windowed) signal
+
+		if deriv > 1:  # Finally, multiply by the corresponding coefficient
+			import math
+			result *= math.factorial(deriv)
+
+		return result
+
+	@staticmethod
+	def differentiate_whole(signal, t, win_size=5, poly_order=2, deriv=0):
+		"""
+		Calculates a filtered derivative (e.g., velocity and acceleration from position). Takes a moving window of the signal and calls differentiate() accordingly.
+		:param signal: Signal to differentiate
+		:param t: Times at which signal was sampled
+		:param win_size: Number of points for the smoothing window (window will have 2*win_size + 1 points)
+		:param poly_order: Order of the smoothing polynomial
+		:param deriv: Order of the derivative to compute (e.g., from pos: deriv=1 is vel, deriv=2 is accel...)
+		:return: Estimation of d(signal)/dt at every point/instant of the signal
+		"""
+		n = len(t)
+		result = np.zeros(n)  # Initialize the output
+		for i in xrange(win_size, n-win_size):  # Take a moving window
+			start, end = i - win_size, i + win_size + 1  # Find the indices for the window interval
+			result[i] = DerivativeHelper.differentiate(signal[start:end], t[start:end], win_size, poly_order, deriv)  # Compute the derivative at that point
+
+		return result
+
+
 if __name__ == '__main__':
-	radio_ch = 75
-	experiment_start_datetime = "2016-10-17 04-24-50"
-	experiment_log = ExperimentLog("{}/{}".format(radio_ch, experiment_start_datetime), {"Yaw": "log", "pX": "piv", "pY": "piv", "pZ": "piv"})
+	radio_ch = 80
+	experiment_start_datetime = "2017-02-04 16-22-54"
+	experiment_log = ExperimentLog("{}/{}".format(radio_ch, experiment_start_datetime), {"aX_raw": "mag", "aY_raw": "mag", "aZ_raw": "mag", "aX_world": "mag", "aY_world": "mag", "aZ_world": "mag", "pX_cam": "mag", "pY_cam": "mag", "pZ_cam": "mag"})
 	experiment_log.load()
-	experiment_log.plot()
+
+	t = experiment_log.magnitudes["px_cam"].lst_timestamp
+	win_size = 11; poly_order = 2;
+	for axis in ("X", "Y", "Z"):
+		experiment_log.add_magnitude(("v{}_cam".format(axis), "mag"), lst_timestamp=t, lst_measured=DerivativeHelper.differentiate_whole(experiment_log.magnitudes["p{}_cam".format(axis.lower())].lst_measured, t, poly_order=poly_order, win_size=win_size, deriv=1))
+		experiment_log.add_magnitude(("a{}_cam".format(axis), "mag"), lst_timestamp=t, lst_measured=DerivativeHelper.differentiate_whole(experiment_log.magnitudes["p{}_cam".format(axis.lower())].lst_measured, t, poly_order=poly_order, win_size=win_size, deriv=2))
+		plt.figure()
+		plt.subplot(3,1,1); plt.plot(t, experiment_log.magnitudes["p{}_cam".format(axis.lower())].lst_measured)
+		plt.subplot(3,1,2); plt.plot(t, experiment_log.magnitudes["v{}_cam".format(axis.lower())].lst_measured)
+		plt.subplot(3,1,3); plt.plot(t, experiment_log.magnitudes["a{}_cam".format(axis.lower())].lst_measured)
+	experiment_log.save()
+	exit()
+
+	t_min = None
+	for win_size in experiment_log.magnitudes.itervalues():
+		if t_min is None or t_min > win_size.lst_timestamp[0]:
+			t_min = win_size.lst_timestamp[0]
+	for win_size in experiment_log.magnitudes.itervalues():
+		win_size.lst_timestamp = [(t - t_min).total_seconds() for t in win_size.lst_timestamp]
+	experiment_log.save()
 	exit()
 
 

@@ -59,7 +59,7 @@ def estimate_3d_location(use_spotter_cam=True):
 	win_title = "3D position estimation"
 	cv2.namedWindow(win_title)
 	cv2.moveWindow(win_title, 100,100)
-	while cv2.waitKey(1) < 0:
+	while cv2.waitKey(1) == 255:  # OpenCV 3.1 and older used to return <0 when no key was pressed. Seems like now 255 is returned in that case...
 		cf_curr_pos = cv.detect_cf_in_camera()[0]  # detect_cf_in_camera() now returns an array -> Element [0] is the "worker" we're interested in
 		if cf_curr_pos is not None:
 			world_coords = cv.img_to_cf_world_coords(cf_curr_pos)
