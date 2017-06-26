@@ -184,12 +184,11 @@ class WorkerDrone:
 	VEL_DERIV_POLY_ORDER = 2
 	TAKEOFF_THRUST = 45000
 	POS_Z_OFFSET = 5.00
-	CRTP_PORT_DR = 7
 
 	def __init__(self, link_uri, experiment_start_datetime):
 		self.cf_radio_ch = link_uri.split("/")[-2]  # Extract CF radio channel number from uri (eg: "radio://0/80/250K")
 		self.experiment_log = plot_tools.ExperimentLog("{}/{}".format(self.cf_radio_ch, experiment_start_datetime),
-				{"aX_raw": "mag", "aY_raw": "mag", "aZ_raw": "mag", "aX_world": "mag", "aY_world": "mag", "aZ_world": "mag", "pX_cam": "mag", "pY_cam": "mag", "pZ_cam": "mag", "vX_cam": "mag", "vY_cam": "mag", "vZ_cam": "mag", "aX_cam": "mag", "aY_cam": "mag", "aZ_cam": "mag"})
+				{"gyroX": "mag", "gyroY": "mag", "gyroZ": "mag", "aX_raw": "mag", "aY_raw": "mag", "aZ_raw": "mag", "aX_world": "mag", "aY_world": "mag", "aZ_world": "mag", "pX_cam": "mag", "pY_cam": "mag", "pZ_cam": "mag", "vX_cam": "mag", "vY_cam": "mag", "vZ_cam": "mag", "aX_cam": "mag", "aY_cam": "mag", "aZ_cam": "mag"})
 		self.cf_log_attitude = self.cf_log_PID_x = self.cf_log_PID_y = self.cf_log_PID_z = None
 		self.cf_logs = []
 		self.cf_radio_connecting = True
@@ -237,22 +236,21 @@ class WorkerDrone:
 			self.crazyflie.param.set_value('deadReckoning.updateDRvel', '{:d}'.format(self.cf_update_DR))
 			self.crazyflie.param.set_value('posCtlPid.thrustBase', '{}'.format(self.TAKEOFF_THRUST))
 
-			self.crazyflie.param.set_value('posCtlPid.pxKp', '{}'.format(0.3))
-			# self.crazyflie.param.set_value('posCtlPid.pxKp', '{}'.format(0.5))
+			# self.crazyflie.param.set_value('posCtlPid.pxKp', '{}'.format(0.3))
+			self.crazyflie.param.set_value('posCtlPid.pxKp', '{}'.format(0.5))
 			# self.crazyflie.param.set_value('posCtlPid.pxKd', '{}'.format(0.1))
-			self.crazyflie.param.set_value('posCtlPid.vxKp', '{}'.format(7))
+			self.crazyflie.param.set_value('posCtlPid.vxKp', '{}'.format(4))
 			self.crazyflie.param.set_value('posCtlPid.vxKi', '{}'.format(0.1))
-			self.crazyflie.param.set_value('posCtlPid.vxKd', '{}'.format(0.5))
+			self.crazyflie.param.set_value('posCtlPid.vxKd', '{}'.format(0.3))
 
-			self.crazyflie.param.set_value('posCtlPid.pyKp', '{}'.format(0.3))
-			# self.crazyflie.param.set_value('posCtlPid.pyKp', '{}'.format(0.5))
+			# self.crazyflie.param.set_value('posCtlPid.pyKp', '{}'.format(0.3))
+			self.crazyflie.param.set_value('posCtlPid.pyKp', '{}'.format(0.5))
 			# self.crazyflie.param.set_value('posCtlPid.pyKd', '{}'.format(0.1))
-			self.crazyflie.param.set_value('posCtlPid.vyKp', '{}'.format(7))
+			self.crazyflie.param.set_value('posCtlPid.vyKp', '{}'.format(4))
 			self.crazyflie.param.set_value('posCtlPid.vyKi', '{}'.format(0.1))
-			self.crazyflie.param.set_value('posCtlPid.vyKd', '{}'.format(0.5))
+			self.crazyflie.param.set_value('posCtlPid.vyKd', '{}'.format(0.3))
 
-			self.crazyflie.param.set_value('posCtlPid.pzKp', '{}'.format(0.4))
-			# self.crazyflie.param.set_value('posCtlPid.pzKp', '{}'.format(0.6))
+			self.crazyflie.param.set_value('posCtlPid.pzKp', '{}'.format(0.6))
 			self.crazyflie.param.set_value('posCtlPid.vzKp', '{}'.format(7000))
 			self.crazyflie.param.set_value('posCtlPid.vzKi', '{}'.format(2500))
 
@@ -275,19 +273,23 @@ class WorkerDrone:
 		self.cf_log_attitude.add_variable("deadReckoning.accX", "float")
 		self.cf_log_attitude.add_variable("deadReckoning.accY", "float")
 		self.cf_log_attitude.add_variable("deadReckoning.accZ", "float")
+		self.cf_log_gyro = LogConfig(name="cf_log_gyro", period_in_ms=10)
+		self.cf_log_gyro.add_variable("gyro.x", "float")
+		self.cf_log_gyro.add_variable("gyro.y", "float")
+		self.cf_log_gyro.add_variable("gyro.z", "float")
 		# self.cf_log_attitude.add_variable("deadReckoning.velX", "float")
 		# self.cf_log_attitude.add_variable("deadReckoning.velY", "float")
 		# self.cf_log_attitude.add_variable("deadReckoning.velZ", "float")
-		self.cf_logs = [self.cf_log_attitude]
+		self.cf_logs = [self.cf_log_attitude, self.cf_log_gyro]
 
 		try:
 			for log in self.cf_logs:
 				self.crazyflie.log.add_config(log)  # Validate the log configuration and attach it to our CF
 				log.data_received_cb.add_callback(self.on_cf_log_new_data)  # Register appropriate callbacks
 				log.error_cb.add_callback(self.on_cf_log_error)
+				log.start()
 		except Exception as e:
 			raise Exception("Couldn't attach the log config to the CrazyFlie, bad configuration. Details: {}".format(e.message))
-		self.cf_log_attitude.start()
 
 		# Automatically detect the first yaw log packet and set the current orientation as the desired yaw
 		while abs(self.aX_world) < 0.001:  # Wait until first cf_yaw value is received (cf_yaw=0 by default)
@@ -321,7 +323,7 @@ class WorkerDrone:
 				self.cf_curr_vel = plot_tools.DerivativeHelper.differentiate(self.cf_past_pos, self.cf_past_pos_t, win_size=self.VEL_DERIV_WIN_SIZE, poly_order=self.VEL_DERIV_POLY_ORDER, deriv=1)
 				self.cf_curr_acc = plot_tools.DerivativeHelper.differentiate(self.cf_past_pos, self.cf_past_pos_t, win_size=self.VEL_DERIV_WIN_SIZE, poly_order=self.VEL_DERIV_POLY_ORDER, deriv=2)
 				self.experiment_log.update(vX_cam=self.cf_curr_vel[0], vY_cam=self.cf_curr_vel[1], vZ_cam=self.cf_curr_vel[2], aX_cam=self.cf_curr_acc[0], aY_cam=self.cf_curr_acc[1], aZ_cam=self.cf_curr_acc[2], timestamp=t_frame)
-				self.send_cf_dr_update(True, self.cf_curr_vel[0], self.cf_curr_vel[1], self.cf_curr_vel[2], self.cnt_iteration)
+				# self.send_cf_dr_update(True, self.cf_curr_vel[0], self.cf_curr_vel[1], self.cf_curr_vel[2], self.cnt_iteration)
 				str_debug_vel = "vx={v[0]:.2f}m/s, vy={v[1]:.2f}m/s, vz={v[2]:.2f}m/s".format(v=self.cf_curr_vel)
 			else:  # Haven't tracked the worker for some time, so I shouldn't use past information to estimate velocity in the (near) future
 				self.cf_past_pos = [new_pos]  # "Forget" about past history, last point was too long ago
@@ -331,7 +333,8 @@ class WorkerDrone:
 			self.cf_curr_pos_t = t_frame  # Update the time at which curr_pos was estimated
 			if self.cf_taking_off:  # Avoid problems when taking off and no target pos has been set yet -> Assign to curr pos
 				self.cf_target_pos = self.cf_curr_pos
-			self.send_cf_dr_update(False, self.cf_curr_pos[0], self.cf_curr_pos[1], self.cf_curr_pos[2]+self.POS_Z_OFFSET, self.cnt_iteration)
+			# self.send_cf_dr_update(False, self.cf_curr_pos[0], self.cf_curr_pos[1], self.cf_curr_pos[2]+self.POS_Z_OFFSET, self.cnt_iteration)
+			self.crazyflie.extpos.send_extpos(self.cf_curr_pos[0], self.cf_curr_pos[1], self.cf_curr_pos[2] + self.POS_Z_OFFSET)
 			print("@{t}, sending position: px={p[0]:.2f}m, py={p[1]:.2f}m, pz={p[2]:.2f}m; velocity: {v}; n={n}".format(t=t_frame, p=self.cf_curr_pos, v=str_debug_vel, n=self.cnt_iteration))
 
 	def cleanup_cf(self, save_logs=True):
@@ -389,6 +392,11 @@ class WorkerDrone:
 			self.aY_world = data['deadReckoning.accY']
 			self.aZ_world = data['deadReckoning.accZ']
 			self.experiment_log.update(aX_raw=self.aX_raw, aY_raw=self.aY_raw, aZ_raw=self.aZ_raw, aX_world=self.aX_world, aY_world=self.aY_world, aZ_world=self.aZ_world)
+		elif logconf.name == "cf_log_gyro":
+			self.gyroX = data['gyro.x']
+			self.gyroY = data['gyro.y']
+			self.gyroZ = data['gyro.z']
+			self.experiment_log.update(gyroX=self.gyroX, gyroY=self.gyroY, gyroZ=self.gyroZ)
 		elif logconf.name == "cf_log_attitude":
 			self.cf_roll = data['stabilizer.roll']
 			self.cf_pitch = data['stabilizer.pitch']
@@ -469,20 +477,20 @@ class WorkerDrone:
 			pk.data += struct.pack(element.pytype, eval(value))
 			self.crazyflie.send_packet(pk, expected_reply=(tuple(pk.data[0:2])))
 
-	def send_cf_dr_update(self, is_vel, x, y, z, timestamp):
-		"""
-		Sends a custom packet that will be interpreted by our modified CF firmware to update its position/velocity estimation.
-		:param is_vel: True if data to send is velocity data; False for position updates
-		:param x: x coordinate of the position/velocity vector to send
-		:param y: y coordinate of the position/velocity vector to send
-		:param z: z coordinate of the position/velocity vector to send
-		:param timestamp: Time at which position/velocity vector was computed/estimated
-		"""
-		pk = CRTPPacket()
-		pk.port = self.CRTP_PORT_DR
-		pk.channel = is_vel
-		pk.data = struct.pack('<fffL', x, y, z, timestamp)
-		self.crazyflie.send_packet(pk)
+	# def send_cf_dr_update(self, is_vel, x, y, z, timestamp):
+	# 	"""
+	# 	Sends a custom packet that will be interpreted by our modified CF firmware to update its position/velocity estimation.
+	# 	:param is_vel: True if data to send is velocity data; False for position updates
+	# 	:param x: x coordinate of the position/velocity vector to send
+	# 	:param y: y coordinate of the position/velocity vector to send
+	# 	:param z: z coordinate of the position/velocity vector to send
+	# 	:param timestamp: Time at which position/velocity vector was computed/estimated
+	# 	"""
+	# 	pk = CRTPPacket()
+	# 	pk.port = self.CRTP_PORT_DR
+	# 	pk.channel = is_vel
+	# 	pk.data = struct.pack('<fffL', x, y, z, timestamp)
+	# 	self.crazyflie.send_packet(pk)
 
 	def get_OSD_text(self, t_frame, t_last_frame, t_start):
 		"""
@@ -508,7 +516,7 @@ class Spotter:
 	COLOR_LINE_UNTRACKED = (0, 0, 255)
 	COLOR_TARGET_TRACKED = (0, 255, 0)
 	COLOR_TARGET_UNTRACKED = (0, 0, 255)
-	SETTINGS_ENVIRONMENT = "Morning bedroom"
+	SETTINGS_ENVIRONMENT = "TBSI"
 	CAMERA_SETTINGS_FILE = "config/cam_settings/Camera settings - USB 2.0 Camera - {}.txt".format(SETTINGS_ENVIRONMENT)
 	COLOR_THRESH_SETTINGS_FILE = "config/color_thresh/Color threshold settings - {}.txt".format(SETTINGS_ENVIRONMENT)
 	BLOB_DETECTOR_SETTINGS_FILE = "config/blob_detector/Blob detector settings.txt"
@@ -963,13 +971,14 @@ class Spotter:
 						w.ignore_cam_until = datetime.now() + timedelta(seconds=0.5)
 						if not w.cf_update_DR:  # If not updating DR, then just stay level
 							w.cnt_iteration += 1
-							w.send_cf_dr_update(True, 0, 0, 0, w.cnt_iteration)
-							w.send_cf_dr_update(False, w.cf_target_pos[0], w.cf_target_pos[1], w.cf_target_pos[2]+w.POS_Z_OFFSET, w.cnt_iteration)
+							# w.send_cf_dr_update(True, 0, 0, 0, w.cnt_iteration)
+							# w.send_cf_dr_update(False, w.cf_target_pos[0], w.cf_target_pos[1], w.cf_target_pos[2]+w.POS_Z_OFFSET, w.cnt_iteration)
+							w.crazyflie.extpos.send_extpos(w.cf_target_pos[0], w.cf_target_pos[1], w.cf_target_pos[2] + w.POS_Z_OFFSET)
 				elif key == 'f':
 					for w in self.workers:
 						w.cf_update_DR = not w.cf_update_DR
-						w.send_cf_param('deadReckoning.updateDRpos', '{:d}'.format(w.cf_update_DR))
-						w.send_cf_param('deadReckoning.updateDRvel', '{:d}'.format(w.cf_update_DR))
+						# w.send_cf_param('deadReckoning.updateDRpos', '{:d}'.format(w.cf_update_DR))
+						# w.send_cf_param('deadReckoning.updateDRvel', '{:d}'.format(w.cf_update_DR))
 				else:  # Any other key ends the experiment
 					for w in self.workers:
 						w.send_cf_param('flightmode.posSet', '{:d}'.format(False))

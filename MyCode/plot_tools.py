@@ -19,6 +19,7 @@ class MagnitudeLog (object):
 
 	def __init__(self, experiment_start_datetime, str_magnitude=""):
 		self.lst_timestamp = []  # List that keeps track of timestamp values at which data was collected
+		self.lst_time_float = []  # List that keeps track of timestamp values at which data was collected, but in float
 		self.lst_measured = []  # List that keeps track of the actual magnitude values over time
 		self.str_magnitude = str_magnitude.replace('_', ' ')  # For plot titles, legends... replace "_" by " " for readability
 		self.EXPERIMENT_START_DATETIME = experiment_start_datetime  # Datetime at which experiment/flight started
@@ -32,6 +33,7 @@ class MagnitudeLog (object):
 		Reset (clear) logged magnitude.
 		"""
 		self.lst_timestamp = []
+		self.lst_time_float = []
 		self.lst_measured = []
 
 	def create_log_dirs(self):
@@ -50,6 +52,9 @@ class MagnitudeLog (object):
 	def get_timestamp(self):
 		return np.array(self.lst_timestamp)
 
+	def get_time_float(self):
+		return np.array(self.lst_time_float)
+
 	def get_measured(self):
 		return np.array(self.lst_measured)
 
@@ -66,6 +71,7 @@ class MagnitudeLog (object):
 			self.lst_timestamp.append(timestamp + datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
 		else:
 			self.lst_timestamp.append(timestamp)
+		self.lst_time_float.append((self.lst_timestamp[-1] - self.lst_timestamp[0]).total_seconds())
 
 	def plot(self):
 		"""
@@ -104,12 +110,24 @@ class MagnitudeLog (object):
 
 		return fig
 
-	def save(self):
+	def shift_time_float(self, t0=None):
+		if t0 is None or len(self.lst_timestamp) == 0:
+			return  # Nothing to do
+		if isinstance(t0, datetime):
+			t0 = t0 - self.lst_timestamp[0]
+		if isinstance(t0, timedelta):
+			t0 = t0.total_seconds()
+
+		for i in range(len(self.lst_time_float)):
+			self.lst_time_float[i] = self.lst_time_float[i] - t0
+
+	def save(self, t0=None):
 		"""
 		Saves log data to its corresponding *.npz file (determined by get_log_filename)
 		"""
 		self.create_log_dirs()  # Make sure LOG_FOLDER and SYM_FOLDER exist so saving the arrays doesn't raise an exception
-		np.savez_compressed("{}.npz".format(self.get_log_filename()), t=self.get_timestamp(), measured=self.get_measured())
+		self.shift_time_float(t0)  # If necessary, shift lst_time_float (maybe other magnitudes started logging earlier than self.lst_timestamp[0])
+		np.savez_compressed("{}.npz".format(self.get_log_filename()), t=self.get_timestamp(), tFloat=self.get_time_float(), measured=self.get_measured())
 		if not os.path.exists("{}.npz".format(self.get_log_filename(is_sym=True))):  # Create symlink (if not already created, would raise an exception in that case)
 			os.symlink("{}.npz".format(os.path.abspath(self.get_log_filename())), "{}.npz".format(self.get_log_filename(is_sym=True)))  # Create a symlink to keep logs organized by date and also by magnitude (make sure symlink source path is absolute!!)
 
@@ -119,7 +137,14 @@ class MagnitudeLog (object):
 		"""
 		with np.load("{}.npz".format(self.get_log_filename())) as data:
 			self.lst_timestamp = list(data["t"])
+			self.load_time_float(data)
 			self.lst_measured = list(data["measured"])
+
+	def load_time_float(self, data):
+		try:
+			self.lst_time_float = list(data["tFloat"])
+		except:
+			self.lst_time_float = [(t - self.lst_timestamp[0]).total_seconds() for t in self.lst_timestamp] if len(self.lst_timestamp) > 0 else []
 
 
 class PidLog (MagnitudeLog):
@@ -195,7 +220,7 @@ class PidLog (MagnitudeLog):
 		else:
 			self.lst_timestamp.append(timestamp)
 
-	def plot(self, plot_PID_terms=False):
+	def plot(self, plot_PID_terms=True):
 		"""
 		Plots the data logged by this PID over time.
 		:param plot_PID_terms: If True, output P, I and D terms are plotted besides the measured and setpoint values.
@@ -251,13 +276,14 @@ class PidLog (MagnitudeLog):
 
 		return fig
 
-	def save(self):
+	def save(self, t0=None):
 		"""
 		Saves log data to its corresponding *.npz file (determined by get_log_filename)
 		"""
 		self.create_log_dirs()  # Make sure LOG_FOLDER and SYM_FOLDER exist so saving the arrays doesn't raise an exception
+		self.shift_time_float(t0)  # If necessary, shift lst_time_float (maybe other magnitudes started logging earlier than self.lst_timestamp[0])
 		np.savez_compressed("{}.npz".format(self.get_log_filename()),
-							t=self.get_timestamp(), setpoint=self.get_setpoint(), measured=self.get_measured(),
+							t=self.get_timestamp(), tFloat=self.get_time_float(), setpoint=self.get_setpoint(), measured=self.get_measured(),
 							out_P=self.get_out_P(), out_I=self.get_out_I(), out_D=self.get_out_D(), offset=self.pid_offset)
 		if not os.path.exists("{}.npz".format(self.get_log_filename(True))):  # Create symlink (if not already created, would raise an exception in that case)
 			os.symlink("{}.npz".format(os.path.abspath(self.get_log_filename())), "{}.npz".format(self.get_log_filename(True)))  # Create a symlink to keep logs organized by date and also by magnitude (make sure symlink source path is absolute!!)
@@ -268,6 +294,7 @@ class PidLog (MagnitudeLog):
 		"""
 		with np.load("{}.npz".format(self.get_log_filename())) as data:
 			self.lst_timestamp = list(data["t"])
+			self.load_time_float(data)
 			self.lst_setpoint = list(data["setpoint"])
 			self.lst_measured = list(data["measured"])
 			self.lst_out_P = list(data["out_P"])
@@ -324,8 +351,13 @@ class ExperimentLog:
 		"""
 		Saves all data logged so far to their corresponding *.npz files (determined by get_log_filename)
 		"""
+		t_min = None  # Find the earliest time a magnitude was logged (they may have started at different times, but we want them all to have the same time_float)
 		for m in self.magnitudes.itervalues():
-			m.save()
+			if len(m.lst_timestamp) > 0 and (t_min is None or t_min > m.lst_timestamp[0]):  # Make sure m.lst_timestamp has at least one data point, otherwise it'll crash and not save
+				t_min = m.lst_timestamp[0]  # New "minimum" t found, save it
+
+		for m in self.magnitudes.itervalues():
+			m.save(t_min)  # Pass the datetime of the earliest log, so time_float can shift the values if necessary
 
 	def load(self):
 		"""
@@ -430,28 +462,31 @@ class DerivativeHelper:
 
 if __name__ == '__main__':
 	radio_ch = 80
-	experiment_start_datetime = "2017-02-04 16-22-54"
-	experiment_log = ExperimentLog("{}/{}".format(radio_ch, experiment_start_datetime), {"aX_raw": "mag", "aY_raw": "mag", "aZ_raw": "mag", "aX_world": "mag", "aY_world": "mag", "aZ_world": "mag", "pX_cam": "mag", "pY_cam": "mag", "pZ_cam": "mag"})
+	experiment_start_datetime = "2017-02-05 11-37-15"
+	experiment_log = ExperimentLog("{}/{}".format(radio_ch, experiment_start_datetime), {"aX_raw": "mag", "aY_raw": "mag", "aZ_raw": "mag", "aX_world": "mag", "aY_world": "mag", "aZ_world": "mag", "pX_cam": "mag", "pY_cam": "mag", "pZ_cam": "mag", "vX_cam": "mag", "vY_cam": "mag", "vZ_cam": "mag", "aX_cam": "mag", "aY_cam": "mag", "aZ_cam": "mag"})
+	# experiment_log = ExperimentLog("{}/{}".format(radio_ch, experiment_start_datetime), {"vX_cam": "mag", "vY_cam": "mag", "vZ_cam": "mag", "aX_cam": "mag", "aY_cam": "mag", "aZ_cam": "mag"})
 	experiment_log.load()
 
-	t = experiment_log.magnitudes["px_cam"].lst_timestamp
-	win_size = 11; poly_order = 2;
-	for axis in ("X", "Y", "Z"):
-		experiment_log.add_magnitude(("v{}_cam".format(axis), "mag"), lst_timestamp=t, lst_measured=DerivativeHelper.differentiate_whole(experiment_log.magnitudes["p{}_cam".format(axis.lower())].lst_measured, t, poly_order=poly_order, win_size=win_size, deriv=1))
-		experiment_log.add_magnitude(("a{}_cam".format(axis), "mag"), lst_timestamp=t, lst_measured=DerivativeHelper.differentiate_whole(experiment_log.magnitudes["p{}_cam".format(axis.lower())].lst_measured, t, poly_order=poly_order, win_size=win_size, deriv=2))
-		plt.figure()
-		plt.subplot(3,1,1); plt.plot(t, experiment_log.magnitudes["p{}_cam".format(axis.lower())].lst_measured)
-		plt.subplot(3,1,2); plt.plot(t, experiment_log.magnitudes["v{}_cam".format(axis.lower())].lst_measured)
-		plt.subplot(3,1,3); plt.plot(t, experiment_log.magnitudes["a{}_cam".format(axis.lower())].lst_measured)
-	experiment_log.save()
-	exit()
+	# t = experiment_log.magnitudes["px_cam"].lst_timestamp
+	# win_size = 11; poly_order = 2;
+	# for axis in ("X", "Y", "Z"):
+	# 	experiment_log.add_magnitude(("v{}_cam".format(axis), "mag"), lst_timestamp=t, lst_measured=DerivativeHelper.differentiate_whole(experiment_log.magnitudes["p{}_cam".format(axis.lower())].lst_measured, t, poly_order=poly_order, win_size=win_size, deriv=1))
+	# 	experiment_log.add_magnitude(("a{}_cam".format(axis), "mag"), lst_timestamp=t, lst_measured=DerivativeHelper.differentiate_whole(experiment_log.magnitudes["p{}_cam".format(axis.lower())].lst_measured, t, poly_order=poly_order, win_size=win_size, deriv=2))
+	# 	plt.figure()
+	# 	plt.subplot(3,1,1); plt.plot(t, experiment_log.magnitudes["p{}_cam".format(axis.lower())].lst_measured)
+	# 	plt.subplot(3,1,2); plt.plot(t, experiment_log.magnitudes["v{}_cam".format(axis.lower())].lst_measured)
+	# 	plt.subplot(3,1,3); plt.plot(t, experiment_log.magnitudes["a{}_cam".format(axis.lower())].lst_measured)
+	# experiment_log.save()
+	# exit()
 
-	t_min = None
-	for win_size in experiment_log.magnitudes.itervalues():
-		if t_min is None or t_min > win_size.lst_timestamp[0]:
-			t_min = win_size.lst_timestamp[0]
-	for win_size in experiment_log.magnitudes.itervalues():
-		win_size.lst_timestamp = [(t - t_min).total_seconds() for t in win_size.lst_timestamp]
+	# t_min = None
+	# for win_size in experiment_log.magnitudes.itervalues():
+	# 	if t_min is None or t_min > win_size.lst_timestamp[0]:
+	# 		t_min = win_size.lst_timestamp[0]
+	# for win_size in experiment_log.magnitudes.itervalues():
+	# 	win_size.lst_time_float = [(t - t_min).total_seconds() for t in win_size.lst_timestamp]
+	# for m in experiment_log.magnitudes.itervalues():
+	# 	m.lst_time_float = m.lst_timestamp
 	experiment_log.save()
 	exit()
 

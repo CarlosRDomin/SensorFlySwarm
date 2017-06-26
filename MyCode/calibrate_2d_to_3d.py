@@ -64,7 +64,7 @@ def estimate_3d_location(use_spotter_cam=True):
 		if cf_curr_pos is not None:
 			world_coords = cv.img_to_cf_world_coords(cf_curr_pos)
 			cv2.circle(cv.cv_cam_frame, tuple(cf_curr_pos[0:2].astype(int)), int(cf_curr_pos[2]), (255, 0, 0), 1)
-			cv2.putText(cv.cv_cam_frame, "x={p[0]:.2f}m, y={p[1]:.2f}m, z={p[2]:.2f}m; dist={d:.2f}cm".format(p=world_coords, d=auxV.world_to_cam_coords([world_coords[0], -world_coords[1], -world_coords[2]], cv.world_to_camera_transf)[2]), (50, cv.cv_cam_frame.shape[0]-50), cv2.FONT_HERSHEY_DUPLEX, 0.9, (0, 0, 200), 1, cv2.LINE_AA)
+			cv2.putText(cv.cv_cam_frame, "x={p[0]:.2f}m, y={p[1]:.2f}m, z={p[2]:.2f}m; dist={d:.2f}cm".format(p=world_coords, d=100*auxV.world_to_cam_coords([world_coords[0], -world_coords[1], -world_coords[2]], cv.world_to_camera_transf)[2]), (50, cv.cv_cam_frame.shape[0]-50), cv2.FONT_HERSHEY_DUPLEX, 0.9, (0, 0, 200), 1, cv2.LINE_AA)
 		else:
 			cv2.putText(cv.cv_cam_frame, "CAN'T TRACK CF!!", (50, cv.cv_cam_frame.shape[0]-50), cv2.FONT_HERSHEY_DUPLEX, 1, (0, 0, 255), 1, cv2.LINE_AA)
 		cv2.imshow(win_title, cv.cv_cam_frame)

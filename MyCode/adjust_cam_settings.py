@@ -214,7 +214,7 @@ class CamFrameGrabberThread(QThread):
 				logging.info("\t{} = {} {} (def:{}, min:{}, max:{})".format(c.display_name, str(c.value), str(c.unit), str(c.def_val), str(c.min_val), str(c.max_val)))
 			self.cap.select_best_frame_mode(self.DEFAULT_FPS)
 			logging.info(self.cap.name + " has the following available modes:\n\t" + str([tuple(x) for x in self.cap.sorted_available_modes()]) + "\nSelected mode: " + str(self.cap.frame_mode))
-			self.cap.print_info()
+			# self.cap.print_info()
 			logging.debug("LOADING SETTINGS returned {}".format(self.cap.load_settings(self.cv.CAMERA_SETTINGS_FILE)))
 			self.sig_update_cam_ui.emit()  # Update camera-related UI (eg: add controls for exposure time, white balance, etc.)
 

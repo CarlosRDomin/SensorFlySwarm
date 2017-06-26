@@ -184,7 +184,8 @@ class WorkerDrone:
 	VEL_DERIV_POLY_ORDER = 2
 	TAKEOFF_THRUST = 45000
 	POS_Z_OFFSET = 5.00
-	CRTP_PORT_DR = 7
+	CF_TARGET_POS_SEND_PERIOD = timedelta(seconds=0.5)  # Resend target pos every 500ms
+	USING_KALMAN = False
 
 	def __init__(self, link_uri, experiment_start_datetime):
 		self.cf_radio_ch = link_uri.split("/")[-2]  # Extract CF radio channel number from uri (eg: "radio://0/80/250K")
@@ -204,9 +205,11 @@ class WorkerDrone:
 		self.cf_curr_pos_t = datetime.now() - timedelta(seconds=self.MAX_INTERVAL_FOR_VEL_ESTIMATION)
 		self.cf_past_pos = []
 		self.cf_past_pos_t = []
+		self.cf_t_last_target_pos_sent = None
 		self.cf_curr_vel = np.array([0.0, 0.0, 0.0])
 		self.cf_update_DR = True
 		self.experiment_running = False
+		self.cf_kalman_ready = not self.USING_KALMAN
 		self.log_PID_x = PID.PIDposAndVel()
 		self.log_PID_y = PID.PIDposAndVel()
 		self.log_PID_z = PID.PIDposAndVel()
@@ -229,37 +232,46 @@ class WorkerDrone:
 			self.crazyflie.param.set_value('flightmode.poshold', '{:d}'.format(False))  # Disable poshold and althold by default
 			self.crazyflie.param.set_value('flightmode.althold', '{:d}'.format(False))
 			self.crazyflie.param.set_value('flightmode.posSet', '{:d}'.format(False))
-			self.crazyflie.param.set_value('flightmode.yawMode', '0')
-			self.crazyflie.param.set_value('flightmode.timeoutStab', '{:d}'.format(1000*60*10))  # Stabilize (rpy=0) CF if doesn't receive a radio command in 10min
-			self.crazyflie.param.set_value('flightmode.timeoutShut', '{:d}'.format(1000*60*20))  # Shutdown CF if doesn't receive a radio command in 20min
-			self.crazyflie.param.set_value('deadReckoning.updateDRpos', '{:d}'.format(self.cf_update_DR))
-			self.crazyflie.param.set_value('deadReckoning.updateDRvel', '{:d}'.format(self.cf_update_DR))
+			self.crazyflie.param.set_value('locSrv.ext_pos_std', '{:f}'.format(0.3))
+			if self.USING_KALMAN: self.crazyflie.param.set_value('kalman.quadWeight', '{:f}'.format(27.0))
+			self.crazyflie.param.set_value('timeout.timeoutStab', '{:d}'.format(1000*1))  # Stabilize (rpy=0) CF if doesn't receive a radio command in 10min
+			self.crazyflie.param.set_value('timeout.timeoutShut', '{:d}'.format(1000*3))  # Shutdown CF if doesn't receive a radio command in 20min
+			# self.crazyflie.param.set_value('deadReckoning.updateDRpos', '{:d}'.format(self.cf_update_DR))
+			# self.crazyflie.param.set_value('deadReckoning.updateDRvel', '{:d}'.format(self.cf_update_DR))
 			self.crazyflie.param.set_value('posCtlPid.thrustBase', '{}'.format(self.TAKEOFF_THRUST))
 
-			self.crazyflie.param.set_value('posCtlPid.pxKp', '{}'.format(0.3))
-			# self.crazyflie.param.set_value('posCtlPid.pxKd', '{}'.format(0.1))
-			self.crazyflie.param.set_value('posCtlPid.vxKp', '{}'.format(6))
-			self.crazyflie.param.set_value('posCtlPid.vxKi', '{}'.format(0.2))
-			self.crazyflie.param.set_value('posCtlPid.vxKd', '{}'.format(0.3))
+			# self.crazyflie.param.set_value('posCtlPid.xKp', '{}'.format(0.3))
+			self.crazyflie.param.set_value('posCtlPid.xKp', '{}'.format(0.7))
+			self.crazyflie.param.set_value('velCtlPid.vxKp', '{}'.format(5))
+			self.crazyflie.param.set_value('velCtlPid.vxKi', '{}'.format(0.2))
+			self.crazyflie.param.set_value('velCtlPid.vxKd', '{}'.format(0.3))
 
-			self.crazyflie.param.set_value('posCtlPid.pyKp', '{}'.format(0.3))
-			# self.crazyflie.param.set_value('posCtlPid.pyKd', '{}'.format(0.1))
-			self.crazyflie.param.set_value('posCtlPid.vyKp', '{}'.format(6))
-			self.crazyflie.param.set_value('posCtlPid.vyKi', '{}'.format(0.2))
-			self.crazyflie.param.set_value('posCtlPid.vyKd', '{}'.format(0.3))
+			# self.crazyflie.param.set_value('posCtlPid.yKp', '{}'.format(0.3))
+			self.crazyflie.param.set_value('posCtlPid.yKp', '{}'.format(0.7))
+			self.crazyflie.param.set_value('velCtlPid.vyKp', '{}'.format(5))
+			self.crazyflie.param.set_value('velCtlPid.vyKi', '{}'.format(0.2))
+			self.crazyflie.param.set_value('velCtlPid.vyKd', '{}'.format(0.3))
 
-			self.crazyflie.param.set_value('posCtlPid.pzKp', '{}'.format(0.4))
-			self.crazyflie.param.set_value('posCtlPid.vzKp', '{}'.format(8000))
-			self.crazyflie.param.set_value('posCtlPid.vzKi', '{}'.format(3000))
+			# self.crazyflie.param.set_value('posCtlPid.zKp', '{}'.format(0.4))
+			self.crazyflie.param.set_value('posCtlPid.zKp', '{}'.format(0.7))
+			# self.crazyflie.param.set_value('velCtlPid.vzKp', '{}'.format(8000))
+			# self.crazyflie.param.set_value('velCtlPid.vzKi', '{}'.format(3000))
+			self.crazyflie.param.set_value('velCtlPid.vzKp', '{}'.format(5))
+			self.crazyflie.param.set_value('velCtlPid.vzKi', '{}'.format(0.2))
+			self.crazyflie.param.set_value('velCtlPid.vzKd', '{}'.format(0.3))
 
 			self.crazyflie.param.set_value("ring.effect", "1")  # Turn off LED ring
 			self.crazyflie.param.set_value("ring.headlightEnable", "0")  # Turn off LED headlight
+
 			self.crazyflie.param.add_update_callback(group="posCtlPid", name=None, cb=self.on_cf_param_new_data)  # Receive values of params for debugging
-			for p in self.crazyflie.param.toc.toc["posCtlPid"].itervalues():  # Request an update of every param in the group
-				self.crazyflie.param.request_param_update("{}.{}".format(p.group, p.name))
+			self.crazyflie.param.add_update_callback(group="velCtlPid", name=None, cb=self.on_cf_param_new_data)  # Receive values of params for debugging
+			for g in ["posCtlPid", "velCtlPid"]:
+				for p in self.crazyflie.param.toc.toc[g].itervalues():  # Request an update of every param in the group
+					self.crazyflie.param.request_param_update("{}.{}".format(p.group, p.name))
 			print("Waiting to receive all posCtlPid PID parmams on the CF")
 			while self.log_PID_x.PIDpos.Kp==0 or self.log_PID_x.PIDvel.Kp==0 or self.log_PID_y.PIDpos.Kp==0 or self.log_PID_y.PIDvel.Kp==0 or self.log_PID_z.PIDpos.Kp==0 or self.log_PID_z.PIDvel.Kp==0:  # Wait until we receive an update on all PID params on the CF
 				time.sleep(1)
+
 		except Exception as e:
 			raise Exception("Couldn't initialize CrazyFlie params to their desired values. Details: {}".format(e.message))
 
@@ -269,23 +281,26 @@ class WorkerDrone:
 		self.cf_log_attitude.add_variable("stabilizer.pitch", "float")
 		self.cf_log_attitude.add_variable("stabilizer.yaw", "float")
 		self.cf_log_PID_x = LogConfig(name="cf_log_PID_x", period_in_ms=10)
-		self.cf_log_PID_x.add_variable("posCtlAlt.targetX", "float")
-		self.cf_log_PID_x.add_variable("posCtlAlt.pxP", "float")
-		self.cf_log_PID_x.add_variable("posCtlAlt.vxP", "float")
-		self.cf_log_PID_x.add_variable("posCtlAlt.vxI", "float")
-		self.cf_log_PID_x.add_variable("posCtlAlt.vxD", "float")
+		self.cf_log_PID_x.add_variable("stateWorld.px", "float")
+		self.cf_log_PID_x.add_variable("posCtl.targetX", "float")
+		self.cf_log_PID_x.add_variable("posCtl.Xp", "float")
+		self.cf_log_PID_x.add_variable("posCtl.VXp", "float")
+		# self.cf_log_PID_x.add_variable("posCtl.VXi", "float")
+		self.cf_log_PID_x.add_variable("posCtl.VXd", "float")
 		self.cf_log_PID_y = LogConfig(name="cf_log_PID_y", period_in_ms=10)
-		self.cf_log_PID_y.add_variable("posCtlAlt.targetY", "float")
-		self.cf_log_PID_y.add_variable("posCtlAlt.pyP", "float")
-		self.cf_log_PID_y.add_variable("posCtlAlt.vyP", "float")
-		self.cf_log_PID_y.add_variable("posCtlAlt.vyI", "float")
-		self.cf_log_PID_y.add_variable("posCtlAlt.vyD", "float")
+		self.cf_log_PID_y.add_variable("stateWorld.py", "float")
+		self.cf_log_PID_y.add_variable("posCtl.targetY", "float")
+		self.cf_log_PID_y.add_variable("posCtl.Yp", "float")
+		self.cf_log_PID_y.add_variable("posCtl.VYp", "float")
+		# self.cf_log_PID_y.add_variable("posCtl.VYi", "float")
+		self.cf_log_PID_y.add_variable("posCtl.VYd", "float")
 		self.cf_log_PID_z = LogConfig(name="cf_log_PID_z", period_in_ms=10)
-		self.cf_log_PID_z.add_variable("posCtlAlt.targetZ", "float")
-		self.cf_log_PID_z.add_variable("posCtlAlt.pzP", "float")
-		self.cf_log_PID_z.add_variable("posCtlAlt.vzP", "float")
-		self.cf_log_PID_z.add_variable("posCtlAlt.vzI", "float")
-		self.cf_log_PID_z.add_variable("posCtlAlt.vzD", "float")
+		self.cf_log_PID_z.add_variable("stateWorld.pz", "float")
+		self.cf_log_PID_z.add_variable("posCtl.targetZ", "float")
+		self.cf_log_PID_z.add_variable("posCtl.Zp", "float")
+		self.cf_log_PID_z.add_variable("posCtl.VZp", "float")
+		# self.cf_log_PID_z.add_variable("posCtl.VZi", "float")
+		self.cf_log_PID_z.add_variable("posCtl.VZd", "float")
 		self.cf_logs = [self.cf_log_attitude, self.cf_log_PID_x, self.cf_log_PID_y, self.cf_log_PID_z]
 
 		try:
@@ -313,7 +328,6 @@ class WorkerDrone:
 		# self.crazyflie.param.set_value('baro.aslOffset', '{}'.format(self.cf_estimated_z+0.2))
 
 		self.crazyflie.add_port_callback(CRTPPort.CONSOLE, self.print_cf_console)
-		self.crazyflie.commander.send_setpoint(0, 0, 0, 0)  # New firmware version requires to send thrust=0 at least once to "unlock thrust"
 
 	def control_cf(self, new_pos, t_frame):
 		"""
@@ -323,6 +337,15 @@ class WorkerDrone:
 		"""
 		self.cf_pos_tracked = (new_pos is not None and datetime.now() > self.ignore_cam_until)
 		self.experiment_log.update(experiment_running=self.experiment_running, pos_tracked=(datetime.now() > self.ignore_cam_until), update_DR=self.cf_update_DR)
+
+		if self.cf_t_last_target_pos_sent is None or datetime.now() > self.cf_t_last_target_pos_sent+self.CF_TARGET_POS_SEND_PERIOD:
+			self.cf_t_last_target_pos_sent = datetime.now()
+			if self.cf_taking_off:
+				# self.crazyflie.commander.send_setpoint(0, 0, 0, WorkerDrone.TAKEOFF_THRUST)
+				self.crazyflie.commander.send_velocity_world_setpoint(0, 0, 0.25, 0)  # Take off at 25cm/s
+			else:
+				self.crazyflie.commander.send_setpoint(self.cf_target_pos[1], self.cf_target_pos[0], 0, 1000*(self.cf_target_pos[2] + self.POS_Z_OFFSET))
+
 		if not self.cf_pos_tracked:  # If cv algorithm wasn't able to detect the drone, linearly estimate its position based on previous position and speed
 			pass
 			# self.cf_curr_pos += self.cf_curr_vel*dt
@@ -334,7 +357,7 @@ class WorkerDrone:
 			if dt < self.MAX_INTERVAL_FOR_VEL_ESTIMATION:
 				# self.cf_curr_vel = self.VEL_ALPHA * self.cf_curr_vel + (1 - self.VEL_ALPHA) * (new_pos - self.cf_curr_pos) / dt
 				self.cf_curr_vel = plot_tools.DerivativeHelper.differentiate(self.cf_past_pos, self.cf_past_pos_t, win_size=self.VEL_DERIV_WIN_SIZE, poly_order=self.VEL_DERIV_POLY_ORDER, deriv=1)
-				self.send_cf_dr_update(True, self.cf_curr_vel[0], self.cf_curr_vel[1], self.cf_curr_vel[2], self.cnt_iteration)
+				# self.send_cf_dr_update(True, self.cf_curr_vel[0], self.cf_curr_vel[1], self.cf_curr_vel[2], self.cnt_iteration)
 				str_debug_vel = "vx={v[0]:.2f}m/s, vy={v[1]:.2f}m/s, vz={v[2]:.2f}m/s".format(v=self.cf_curr_vel)
 			else:  # Haven't tracked the worker for some time, so I shouldn't use past information to estimate velocity in the (near) future
 				self.cf_past_pos = [new_pos]  # "Forget" about past history, last point was too long ago
@@ -344,7 +367,8 @@ class WorkerDrone:
 			self.cf_curr_pos_t = t_frame  # Update the time at which curr_pos was estimated
 			if self.cf_taking_off:  # Avoid problems when taking off and no target pos has been set yet -> Assign to curr pos
 				self.cf_target_pos = self.cf_curr_pos
-			self.send_cf_dr_update(False, self.cf_curr_pos[0], self.cf_curr_pos[1], self.cf_curr_pos[2]+self.POS_Z_OFFSET, self.cnt_iteration)
+			# self.send_cf_dr_update(False, self.cf_curr_pos[0], self.cf_curr_pos[1], self.cf_curr_pos[2]+self.POS_Z_OFFSET, self.cnt_iteration)
+			self.crazyflie.extpos.send_extpos(self.cf_curr_pos[0], self.cf_curr_pos[1], self.cf_curr_pos[2]+self.POS_Z_OFFSET)
 			print("@{t}, sending position: px={p[0]:.2f}m, py={p[1]:.2f}m, pz={p[2]:.2f}m; velocity: {v}; n={n}".format(t=t_frame, p=self.cf_curr_pos, v=str_debug_vel, n=self.cnt_iteration))
 
 	def cleanup_cf(self, save_logs=True):
@@ -357,6 +381,7 @@ class WorkerDrone:
 			self.send_cf_param('flightmode.posSet', '{:d}'.format(False))
 			self.send_cf_param('flightmode.althold', '{:d}'.format(False))  # Make sure we're not on althold mode, so sending a thrust 0 will kill the motors and not just descend
 			self.crazyflie.commander.send_setpoint(0, 0, 0, 0)  # Kill the motors (if the experiment went well, they should already be killed, but this is important if there was an Exception)
+			self.crazyflie.commander.send_stop_setpoint()
 
 			for l in self.cf_logs:
 				if l is not None:  # If we were logging data from the CF, stop it (will reconnect faster next time)
@@ -403,37 +428,40 @@ class WorkerDrone:
 			print "\rCurrent yaw: {:.2f}deg".format(self.cf_yaw),
 			self.experiment_log.update(yaw=self.cf_yaw)
 		elif logconf.name == "cf_log_PID_x":
-			self.log_PID_x.PIDpos.setSetPoint(data["posCtlAlt.targetX"])
-			self.log_PID_x.PIDpos.update(self.log_PID_x.PIDpos.SetPoint - (data["posCtlAlt.pxP"]/self.log_PID_x.PIDpos.Kp))
-			self.log_PID_x.PIDvel.setSetPoint(data["posCtlAlt.pxP"])  # Since PIDpos only has P, output=pxP -> =PIDvel.SetPoint
-			self.log_PID_x.PIDvel.update(self.log_PID_x.PIDvel.SetPoint - (data["posCtlAlt.vxP"]/self.log_PID_x.PIDvel.Kp))
-			self.log_PID_x.PIDpos.PTerm = data["posCtlAlt.pxP"]
+			self.log_PID_x.PIDpos.setSetPoint(data["posCtl.targetX"])
+			# self.log_PID_x.PIDpos.update(self.log_PID_x.PIDpos.SetPoint - (data["posCtl.Xp"]/self.log_PID_x.PIDpos.Kp))
+			self.log_PID_x.PIDpos.update(data["stateWorld.px"])
+			self.log_PID_x.PIDvel.setSetPoint(data["posCtl.Xp"])  # Since PIDpos only has P, output=pxP -> =PIDvel.SetPoint
+			self.log_PID_x.PIDvel.update(self.log_PID_x.PIDvel.SetPoint - (data["posCtl.VXp"]/self.log_PID_x.PIDvel.Kp))
+			self.log_PID_x.PIDpos.PTerm = data["posCtl.Xp"]
 			self.log_PID_x.PIDpos.ITerm = self.log_PID_x.DTerm = 0
-			self.log_PID_x.PIDvel.PTerm = data["posCtlAlt.vxP"]
-			self.log_PID_x.PIDvel.ITerm = 0 if self.log_PID_x.PIDvel.Ki==0 else data["posCtlAlt.vxI"]/self.log_PID_x.PIDvel.Ki  # ITerm and DTerm don't include their K
-			self.log_PID_x.PIDvel.DTerm = 0 if self.log_PID_x.PIDvel.Kd==0 else data["posCtlAlt.vxD"]/self.log_PID_x.PIDvel.Kd
+			self.log_PID_x.PIDvel.PTerm = data["posCtl.VXp"]
+			# self.log_PID_x.PIDvel.ITerm = 0 if self.log_PID_x.PIDvel.Ki==0 else data["posCtl.VXi"]/self.log_PID_x.PIDvel.Ki  # ITerm and DTerm don't include their K
+			self.log_PID_x.PIDvel.DTerm = 0 if self.log_PID_x.PIDvel.Kd==0 else data["posCtl.VXd"]/self.log_PID_x.PIDvel.Kd
 			self.experiment_log.update(px=self.log_PID_x)
 		elif logconf.name == "cf_log_PID_y":
-			self.log_PID_y.PIDpos.setSetPoint(data["posCtlAlt.targetY"])
-			self.log_PID_y.PIDpos.update(self.log_PID_y.PIDpos.SetPoint - (data["posCtlAlt.pyP"]/self.log_PID_y.PIDpos.Kp))
-			self.log_PID_y.PIDvel.setSetPoint(data["posCtlAlt.pyP"])
-			self.log_PID_y.PIDvel.update(self.log_PID_y.PIDvel.SetPoint - (data["posCtlAlt.vyP"]/self.log_PID_y.PIDvel.Kp))
-			self.log_PID_y.PIDpos.PTerm = data["posCtlAlt.pyP"]
+			self.log_PID_y.PIDpos.setSetPoint(data["posCtl.targetY"])
+			# self.log_PID_y.PIDpos.update(self.log_PID_y.PIDpos.SetPoint - (data["posCtl.Yp"]/self.log_PID_y.PIDpos.Kp))
+			self.log_PID_y.PIDpos.update(data["stateWorld.py"])
+			self.log_PID_y.PIDvel.setSetPoint(data["posCtl.Yp"])
+			self.log_PID_y.PIDvel.update(self.log_PID_y.PIDvel.SetPoint - (data["posCtl.VYp"]/self.log_PID_y.PIDvel.Kp))
+			self.log_PID_y.PIDpos.PTerm = data["posCtl.Yp"]
 			self.log_PID_y.PIDpos.ITerm = self.log_PID_y.DTerm = 0
-			self.log_PID_y.PIDvel.PTerm = data["posCtlAlt.vyP"]
-			self.log_PID_y.PIDvel.ITerm = 0 if self.log_PID_y.PIDvel.Ki==0 else data["posCtlAlt.vyI"]/self.log_PID_y.PIDvel.Ki
-			self.log_PID_y.PIDvel.DTerm = 0 if self.log_PID_y.PIDvel.Kd==0 else data["posCtlAlt.vyD"]/self.log_PID_y.PIDvel.Kd
+			self.log_PID_y.PIDvel.PTerm = data["posCtl.VYp"]
+			# self.log_PID_y.PIDvel.ITerm = 0 if self.log_PID_y.PIDvel.Ki==0 else data["posCtl.VYi"]/self.log_PID_y.PIDvel.Ki
+			self.log_PID_y.PIDvel.DTerm = 0 if self.log_PID_y.PIDvel.Kd==0 else data["posCtl.VYd"]/self.log_PID_y.PIDvel.Kd
 			self.experiment_log.update(py=self.log_PID_y)
 		elif logconf.name == "cf_log_PID_z":
-			self.log_PID_z.PIDpos.setSetPoint(data["posCtlAlt.targetZ"] - self.POS_Z_OFFSET)
-			self.log_PID_z.PIDpos.update(self.log_PID_z.PIDpos.SetPoint - (data["posCtlAlt.pzP"]/self.log_PID_z.PIDpos.Kp))
-			self.log_PID_z.PIDvel.setSetPoint(data["posCtlAlt.pzP"])
-			self.log_PID_z.PIDvel.update(self.log_PID_z.PIDvel.SetPoint - (data["posCtlAlt.vzP"]/self.log_PID_z.PIDvel.Kp))
-			self.log_PID_z.PIDpos.PTerm = data["posCtlAlt.pzP"]
+			self.log_PID_z.PIDpos.setSetPoint(data["posCtl.targetZ"] - self.POS_Z_OFFSET)
+			# self.log_PID_z.PIDpos.update(self.log_PID_z.PIDpos.SetPoint - (data["posCtl.Zp"]/self.log_PID_z.PIDpos.Kp))
+			self.log_PID_z.PIDpos.update(data["stateWorld.pz"] - self.POS_Z_OFFSET)
+			self.log_PID_z.PIDvel.setSetPoint(data["posCtl.Zp"])
+			self.log_PID_z.PIDvel.update(self.log_PID_z.PIDvel.SetPoint - (data["posCtl.VZp"]/self.log_PID_z.PIDvel.Kp))
+			self.log_PID_z.PIDpos.PTerm = data["posCtl.Zp"]
 			self.log_PID_z.PIDpos.ITerm = self.log_PID_z.DTerm = 0
-			self.log_PID_z.PIDvel.PTerm = data["posCtlAlt.vzP"]
-			self.log_PID_z.PIDvel.ITerm = 0 if self.log_PID_z.PIDvel.Ki==0 else data["posCtlAlt.vzI"]/self.log_PID_z.PIDvel.Ki
-			self.log_PID_z.PIDvel.DTerm = 0 if self.log_PID_z.PIDvel.Kd==0 else data["posCtlAlt.vzD"]/self.log_PID_z.PIDvel.Kd
+			self.log_PID_z.PIDvel.PTerm = data["posCtl.VZp"]
+			# self.log_PID_z.PIDvel.ITerm = 0 if self.log_PID_z.PIDvel.Ki==0 else data["posCtl.VZi"]/self.log_PID_z.PIDvel.Ki
+			self.log_PID_z.PIDvel.DTerm = 0 if self.log_PID_z.PIDvel.Kd==0 else data["posCtl.VZd"]/self.log_PID_z.PIDvel.Kd
 			self.experiment_log.update(pz=self.log_PID_z)
 
 	def on_cf_param_new_data(self, name, value):
@@ -442,7 +470,7 @@ class WorkerDrone:
 		value = float(value)
 		log = self.log_PID_x if name[-3]=="x" else self.log_PID_y if name[-3]=="y" else self.log_PID_z if name[-3]=="z" else None
 		if log is not None:
-			log = log.PIDpos if name[0]=="p" else log.PIDvel if name[0]=="v" else None
+			log = log.PIDvel if name[0]=="v" else log.PIDpos
 			if log is not None:
 				if name[-1] == "p":
 					log.setKp(value)
@@ -474,20 +502,62 @@ class WorkerDrone:
 			pk.data += struct.pack(element.pytype, eval(value))
 			self.crazyflie.send_packet(pk, expected_reply=(tuple(pk.data[0:2])))
 
-	def send_cf_dr_update(self, is_vel, x, y, z, timestamp):
-		"""
-		Sends a custom packet that will be interpreted by our modified CF firmware to update its position/velocity estimation.
-		:param is_vel: True if data to send is velocity data; False for position updates
-		:param x: x coordinate of the position/velocity vector to send
-		:param y: y coordinate of the position/velocity vector to send
-		:param z: z coordinate of the position/velocity vector to send
-		:param timestamp: Time at which position/velocity vector was computed/estimated
-		"""
-		pk = CRTPPacket()
-		pk.port = self.CRTP_PORT_DR
-		pk.channel = is_vel
-		pk.data = struct.pack('<fffL', x, y, z, timestamp)
-		self.crazyflie.send_packet(pk)
+	# def send_cf_dr_update(self, is_vel, x, y, z, timestamp):
+	# 	"""
+	# 	Sends a custom packet that will be interpreted by our modified CF firmware to update its position/velocity estimation.
+	# 	:param is_vel: True if data to send is velocity data; False for position updates
+	# 	:param x: x coordinate of the position/velocity vector to send
+	# 	:param y: y coordinate of the position/velocity vector to send
+	# 	:param z: z coordinate of the position/velocity vector to send
+	# 	:param timestamp: Time at which position/velocity vector was computed/estimated
+	# 	"""
+	# 	pk = CRTPPacket()
+	# 	pk.port = self.CRTP_PORT_DR
+	# 	pk.channel = is_vel
+	# 	pk.data = struct.pack('<fffL', x, y, z, timestamp)
+	# 	self.crazyflie.send_packet(pk)
+
+	def reset_Kalman(self):
+		if self.USING_KALMAN:
+			self.cf_kalman_ready = False
+			self.crazyflie.param.set_value('kalman.resetEstimation', '1')
+			self.start_waiting_for_Kalman_to_stabilize()
+
+	def start_waiting_for_Kalman_to_stabilize(self):
+		if self.USING_KALMAN:
+			var_x_history = [1000] * 10; var_y_history = [1000] * 10; var_z_history = [1000] * 10
+			var_threshold = 0.001
+
+			def on_kalman_log_new_data(timestamp, data, logconf):
+				if logconf.name == "KalmanVariance":
+					var_x_history.pop(0); var_x_history.append(data['kalman.varPX'])
+					var_y_history.pop(0); var_y_history.append(data['kalman.varPY'])
+					var_z_history.pop(0); var_z_history.append(data['kalman.varPZ'])
+					print "Kalman filter variance: x={:8.4f}, y={:8.4f}, z={:8.4f}; Pos variance: x={:8.4f}, y={:8.4f}, z={:8.4f}".format(data['kalman.varPX'], data['kalman.varPY'], data['kalman.varPZ'], data['kalman.varX'], data['kalman.varY'], data['kalman.varZ'])
+					# print "Kalman filter variance: x={:8.4f}, y={:8.4f}, z={:8.4f}".format(data['kalman.varPX'], data['kalman.varPY'], data['kalman.varPZ'])
+
+					if (max(var_x_history)-min(var_x_history)) < var_threshold and (max(var_y_history)-min(var_y_history)) < var_threshold and (max(var_z_history)-min(var_z_history)) < var_threshold:
+						log_config.stop()
+						self.cf_kalman_ready = True
+
+			log_config = LogConfig(name='KalmanVariance', period_in_ms=250)
+			log_config.add_variable('kalman.varPX', 'float')
+			log_config.add_variable('kalman.varPY', 'float')
+			log_config.add_variable('kalman.varPZ', 'float')
+			log_config.add_variable('kalman.varX', 'float')
+			log_config.add_variable('kalman.varY', 'float')
+			log_config.add_variable('kalman.varZ', 'float')
+			try:
+				self.crazyflie.log.add_config(log_config)
+			except Exception as e:
+				raise Exception("Couldn't attach the Kalman filter log config to the CrazyFlie, bad configuration. Details: {}".format(e.message))
+			log_config.data_received_cb.add_callback(on_kalman_log_new_data)  # Register appropriate callbacks
+			log_config.error_cb.add_callback(self.on_cf_log_error)
+			log_config.start()
+
+	def wait_for_Kalman_to_stabilize(self):
+		while self.USING_KALMAN and not self.cf_kalman_ready:
+			time.sleep(0.25)
 
 	def get_OSD_text(self, t_frame, t_last_frame, t_start):
 		"""
@@ -513,7 +583,7 @@ class Spotter:
 	COLOR_LINE_UNTRACKED = (0, 0, 255)
 	COLOR_TARGET_TRACKED = (0, 255, 0)
 	COLOR_TARGET_UNTRACKED = (0, 0, 255)
-	SETTINGS_ENVIRONMENT = "Morning bedroom"
+	SETTINGS_ENVIRONMENT = "AiFi"
 	CAMERA_SETTINGS_FILE = "config/cam_settings/Camera settings - USB 2.0 Camera - {}.txt".format(SETTINGS_ENVIRONMENT)
 	COLOR_THRESH_SETTINGS_FILE = "config/color_thresh/Color threshold settings - {}.txt".format(SETTINGS_ENVIRONMENT)
 	BLOB_DETECTOR_SETTINGS_FILE = "config/blob_detector/Blob detector settings.txt"
@@ -753,8 +823,24 @@ class Spotter:
 		(usually includes information about the CF crashing...)
 		:return: Whether or not to keep (store) the logs, based on whether the CF ever actually took off and flew
 		"""
-		print "Giving you 5s to prepare for take-off..."
-		time.sleep(5)
+		print "Giving you 2s to prepare for take-off... (waiting for Kalman to stabilize meanwhile...)"
+		for w in self.workers:  # Force a reset of all workers' Kalman filters
+			w.reset_Kalman()
+		while any([not w.cf_kalman_ready for w in self.workers]):
+			try:  # First, run the cv algorithm to estimate the CF's position
+				new_pos_arr = self.detect_cf_in_camera()
+			except:  # Only way detect_cf_in_camera raises an Exception is if a camera frame couldn't be grabbed
+				logging.exception("Couldn't grab a frame from the camera. Exiting")
+				return False  # Exit without saving logs
+
+			# Now that we know where the drone currently is, send position updates so Kalman filter variance converges
+			for i, w in enumerate(self.workers):
+				w.cf_curr_pos = self.img_to_cf_world_coords(new_pos_arr[i])
+				w.crazyflie.extpos.send_extpos(w.cf_curr_pos[0], w.cf_curr_pos[1], w.cf_curr_pos[2] + w.POS_Z_OFFSET)
+
+		time.sleep(2)
+		for w in self.workers:  # Make sure all Kalman filters have converged to a position estimation, otherwise for them
+			w.wait_for_Kalman_to_stabilize()
 
 		# t = Timer(10, self.cleanup_experiment)  # Start a timer to automatically disconnect in 10s
 		# t.start()
@@ -767,7 +853,14 @@ class Spotter:
 			w.cf_log_PID_y.start()
 			w.cf_log_PID_z.start()
 			w.cf_str_status = "TAKING OFF"
-			w.crazyflie.commander.send_setpoint(0, 0, 0, WorkerDrone.TAKEOFF_THRUST)  #w.cf_target_yaw
+			w.crazyflie.commander.send_setpoint(0, 0, 0, 0)  # New firmware version requires to send thrust=0 at least once to "unlock thrust"
+			# w.crazyflie.commander.send_setpoint(0, 0, 0, WorkerDrone.TAKEOFF_THRUST)  #w.cf_target_yaw
+			w.crazyflie.commander.send_velocity_world_setpoint(0, 0, 0.25, 0)  # Take off at 25cm/s
+			w.cf_t_last_target_pos_sent = datetime.now()
+
+			# w.crazyflie.param.set_value('flightmode.posSet', '{:d}'.format(True))
+			# w.crazyflie.extpos.send_extpos(w.cf_curr_pos[0], w.cf_curr_pos[1], w.cf_curr_pos[2] + w.POS_Z_OFFSET)
+			# w.crazyflie.commander.send_setpoint(w.cf_curr_pos[1], w.cf_curr_pos[0], 0, 1000*(w.cf_curr_pos[2] + w.POS_Z_OFFSET + 0.5))
 
 		# Alright, let's fly!
 		tStop = None
@@ -885,7 +978,8 @@ class Spotter:
 		depth_in_m = Spotter.CAM_FOCAL_LENGTH_IN_PX * Spotter.CF_RADIUS_IN_M / img_coords[2]
 		cam_coords = auxV.img_to_cam_coords(np.hstack((img_coords[0:2], depth_in_m)), self.video_capture.camera_matrix, self.video_capture.dist_coefs)
 		world_coords = auxV.cam_to_world_coords(cam_coords, self.world_to_camera_transf)
-		return np.array([1, -1, -1]) * world_coords  # Flip y and z axes sign to convert world->cf coords
+		return np.array([1, -1, -1]) * world_coords  # Flip y and z axes sign to convert world->cf coords. USE THIS FOR HORIZONTAL CHESSBOARD WITH +X AXIS POINTING TOWARDS CAMERA (+Y AXIS LEFT)
+		# return np.array([-1, 1, 1]) * world_coords[[2,1,0]] + [0,0,0.8]  # This means: CF_x=-world_z, CF_y=world_y, CF_z=world_x. USE THIS FOR VERTICAL CHESSBOARD WITH +X AXIS UP (+Y AXIS RIGHT)
 
 	def cf_world_to_img_coords(self, cf_world_coords):
 		"""
@@ -897,7 +991,8 @@ class Spotter:
 		"""
 		if cf_world_coords is None:
 			return None
-		world_coords = np.array([1, -1, -1]) * cf_world_coords  # Flip y and z axes sign to convert cf->world coords
+		world_coords = np.array([1, -1, -1]) * cf_world_coords  # Flip y and z axes sign to convert cf->world coords. USE THIS FOR HORIZONTAL CHESSBOARD WITH +X AXIS POINTING TOWARDS CAMERA (+Y AXIS LEFT)
+		# world_coords = np.array([1, 1, -1]) * (cf_world_coords[[2, 1, 0]] - [0.8,0,0])  # This means: world_x=CF_z, world_y=CF_y, world_z=-CF_x. USE THIS FOR VERTICAL CHESSBOARD WITH +X AXIS UP (+Y AXIS RIGHT)
 
 		cam_coords = auxV.world_to_cam_coords(world_coords, self.world_to_camera_transf)
 		img_coords = auxV.cam_to_img_coords(cam_coords, self.video_capture.camera_matrix, self.video_capture.dist_coefs)
@@ -958,7 +1053,7 @@ class Spotter:
 					for w in self.workers:
 						w.cf_taking_off = False
 						w.cf_str_status = "FLYING"
-						target_pos_offset = np.array([0, 0, 0])
+						target_pos_offset = np.array([0, 0, 0.25])  # Make them hover slightly above current position
 						send_posSet = True
 				elif key == 'x':
 					for w in self.workers:
@@ -968,17 +1063,19 @@ class Spotter:
 						w.ignore_cam_until = datetime.now() + timedelta(seconds=0.5)
 						if not w.cf_update_DR:  # If not updating DR, then just stay level
 							w.cnt_iteration += 1
-							w.send_cf_dr_update(True, 0, 0, 0, w.cnt_iteration)
-							w.send_cf_dr_update(False, w.cf_target_pos[0], w.cf_target_pos[1], w.cf_target_pos[2]+w.POS_Z_OFFSET, w.cnt_iteration)
+							# w.send_cf_dr_update(True, 0, 0, 0, w.cnt_iteration)
+							# w.send_cf_dr_update(False, w.cf_target_pos[0], w.cf_target_pos[1], w.cf_target_pos[2]+w.POS_Z_OFFSET, w.cnt_iteration)
+							w.crazyflie.extpos.send_extpos(w.cf_target_pos[0], w.cf_target_pos[1], w.cf_target_pos[2]+w.POS_Z_OFFSET)
 				elif key == 'f':
 					for w in self.workers:
 						w.cf_update_DR = not w.cf_update_DR
-						w.send_cf_param('deadReckoning.updateDRpos', '{:d}'.format(w.cf_update_DR))
-						w.send_cf_param('deadReckoning.updateDRvel', '{:d}'.format(w.cf_update_DR))
+						# w.send_cf_param('deadReckoning.updateDRpos', '{:d}'.format(w.cf_update_DR))
+						# w.send_cf_param('deadReckoning.updateDRvel', '{:d}'.format(w.cf_update_DR))
 				else:  # Any other key ends the experiment
 					for w in self.workers:
 						w.send_cf_param('flightmode.posSet', '{:d}'.format(False))
 						w.crazyflie.commander.send_setpoint(0, 0, 0, 0)
+						w.crazyflie.commander.send_stop_setpoint()
 						w.cf_radio_connected = False
 						w.experiment_running = False
 					return False
@@ -993,6 +1090,7 @@ class Spotter:
 					w.cf_target_pos[2] = max(w.cf_target_pos[2], -w.POS_Z_OFFSET)  # Can't send a negative z value, make sure w.cf_target_pos[2] >= w.POS_Z_OFFSET
 					print("CF rc{} holding position at: x={p[0]:.2f}m, y={p[1]:.2f}m, z={p[2]:.2f}m".format(w.cf_radio_ch, p=w.cf_target_pos))
 					w.crazyflie.commander.send_setpoint(w.cf_target_pos[1], w.cf_target_pos[0], 0, 1000*(w.cf_target_pos[2]+w.POS_Z_OFFSET))
+					w.cf_t_last_target_pos_sent = datetime.now()
 					if send_posSet:
 						w.send_cf_param('flightmode.posSet', '{:d}'.format(True))
 						w.crazyflie.commander.send_setpoint(w.cf_target_pos[1], w.cf_target_pos[0], 0, 1000*(w.cf_target_pos[2]+w.POS_Z_OFFSET))  # Just in case, send the new position again
