@@ -7,7 +7,7 @@
 import logging
 import cv2
 import vision_aux_functions as auxV
-from full_control_with_cam import Spotter, FakeWorkerDrone, GroundTruthThread
+from full_control_with_cam_IPSN import Spotter, FakeWorkerDrone, GroundTruthThread
 from uvc_capture import UvcCapture
 from calibrate_cam_params import CALIB_FOLDER, generate_calibration_filename, ensure_folder_exists
 from datetime import datetime

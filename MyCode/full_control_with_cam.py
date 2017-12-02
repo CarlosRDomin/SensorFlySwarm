@@ -276,7 +276,7 @@ class WorkerDrone:
 			raise Exception("Couldn't initialize CrazyFlie params to their desired values. Details: {}".format(e.message))
 
 		# Create a log configuration and include all variables that want to be logged
-		self.cf_log_attitude = LogConfig(name="cf_log_attitude", period_in_ms=10)
+		self.cf_log_attitude = LogConfig(name="cf_log_accel", period_in_ms=10)
 		self.cf_log_attitude.add_variable("stabilizer.roll", "float")
 		self.cf_log_attitude.add_variable("stabilizer.pitch", "float")
 		self.cf_log_attitude.add_variable("stabilizer.yaw", "float")
@@ -419,7 +419,7 @@ class WorkerDrone:
 
 	def on_cf_log_new_data(self, timestamp, data, logconf):
 		logging.debug("[%d][%s]: %s" % (timestamp, logconf.name, data))
-		if logconf.name == "cf_log_attitude":
+		if logconf.name == "cf_log_accel":
 			self.cf_roll = data['stabilizer.roll']
 			self.cf_pitch = data['stabilizer.pitch']
 			self.cf_yaw = data['stabilizer.yaw']
@@ -583,7 +583,7 @@ class Spotter:
 	COLOR_LINE_UNTRACKED = (0, 0, 255)
 	COLOR_TARGET_TRACKED = (0, 255, 0)
 	COLOR_TARGET_UNTRACKED = (0, 0, 255)
-	SETTINGS_ENVIRONMENT = "AiFi"
+	SETTINGS_ENVIRONMENT = "Yosemite room"
 	CAMERA_SETTINGS_FILE = "config/cam_settings/Camera settings - USB 2.0 Camera - {}.txt".format(SETTINGS_ENVIRONMENT)
 	COLOR_THRESH_SETTINGS_FILE = "config/color_thresh/Color threshold settings - {}.txt".format(SETTINGS_ENVIRONMENT)
 	BLOB_DETECTOR_SETTINGS_FILE = "config/blob_detector/Blob detector settings.txt"
