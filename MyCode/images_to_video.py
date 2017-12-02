@@ -52,10 +52,10 @@ def generate_video_from_images(img_folder_or_filelist, video_folder="videos", vi
 
 		for i, f in enumerate(files):
 			video.write(cv2.imread(f))
-			print "\r{} out of {} frames ({:6.2f}%) written! Time elapsed: {:.2f}s".format(i+1, len(files), 100.0*(i+1)/len(files), (datetime.now()-t_start).total_seconds()),
+			print "{} out of {} frames ({:6.2f}%) written! Time elapsed: {:.2f}s".format(i+1, len(files), 100.0*(i+1)/len(files), (datetime.now()-t_start).total_seconds()),
 
 		video.release()  # Make sure to release the video so it's actually written to disk
-		print "\nVideo successfully saved as '{}' in a total of {:.2f}s! :)".format(video_filename, (datetime.now()-t_start).total_seconds())
+		print "Video successfully saved as '{}' in a total of {:.2f}s! :)".format(video_filename, (datetime.now()-t_start).total_seconds())
 
 
 if __name__ == '__main__':

@@ -417,20 +417,20 @@ class DerivativeHelper:
 		return Ai[k]
 
 	@staticmethod
-	def differentiate(signal, t, win_size=5, poly_order=2, deriv=0):
+	def differentiate(signal, t, win_half_size=5, poly_order=2, deriv=0):
 		"""
-		Calculates a filtered derivative (e.g., velocity and acceleration from position). Crops input signal if necessary (no need to pass a segment of length=win_size).
+		Calculates a filtered derivative (e.g., velocity and acceleration from position). Crops input signal if necessary (no need to pass a segment of length=win_half_size).
 		:param signal: Signal to differentiate
 		:param t: Times at which signal was sampled
-		:param win_size: Number of points for the smoothing window (window will have 2*win_size + 1 points)
+		:param win_half_size: Number of points for the smoothing window (window will have 2*win_half_size + 1 points)
 		:param poly_order: Order of the smoothing polynomial
 		:param deriv: Order of the derivative to compute (e.g., from pos: deriv=1 is vel, deriv=2 is accel...)
-		:return: Estimation of d(signal)/dt at the center of the smoothing window (so at t[-win_size])
+		:return: Estimation of d(signal)/dt at the center of the smoothing window (so at t[-win_half_size])
 		"""
 
 		if deriv > poly_order: raise Exception("deriv must be <= poly_order!")
 
-		start_ind = max(0, len(signal)-(2*win_size + 1))  # Get last 2*win_size+1 points of the singal (or the whole signal if len(signal) is shorter)
+		start_ind = max(0, len(signal) - (2 * win_half_size + 1))  # Get last 2*win_half_size+1 points of the singal (or the whole signal if len(signal) is shorter)
 		f = DerivativeHelper.sg_filter(t[start_ind:], poly_order, deriv)  # Compute the Savitzky-Golay Filter
 		result = np.dot(f, signal[start_ind:])  # And apply the filter to the (windowed) signal
 
@@ -441,21 +441,21 @@ class DerivativeHelper:
 		return result
 
 	@staticmethod
-	def differentiate_whole(signal, t, win_size=5, poly_order=2, deriv=0):
+	def differentiate_whole(signal, t, win_half_size=5, poly_order=2, deriv=0):
 		"""
 		Calculates a filtered derivative (e.g., velocity and acceleration from position). Takes a moving window of the signal and calls differentiate() accordingly.
 		:param signal: Signal to differentiate
 		:param t: Times at which signal was sampled
-		:param win_size: Number of points for the smoothing window (window will have 2*win_size + 1 points)
+		:param win_half_size: Number of points for the smoothing window (window will have 2*win_half_size + 1 points)
 		:param poly_order: Order of the smoothing polynomial
 		:param deriv: Order of the derivative to compute (e.g., from pos: deriv=1 is vel, deriv=2 is accel...)
 		:return: Estimation of d(signal)/dt at every point/instant of the signal
 		"""
 		n = len(t)
 		result = np.zeros(n)  # Initialize the output
-		for i in xrange(win_size, n-win_size):  # Take a moving window
-			start, end = i - win_size, i + win_size + 1  # Find the indices for the window interval
-			result[i] = DerivativeHelper.differentiate(signal[start:end], t[start:end], win_size, poly_order, deriv)  # Compute the derivative at that point
+		for i in xrange(win_half_size, n-win_half_size):  # Take a moving window
+			start, end = i - win_half_size, i + win_half_size + 1  # Find the indices for the window interval
+			result[i] = DerivativeHelper.differentiate(signal[start:end], t[start:end], win_half_size, poly_order, deriv)  # Compute the derivative at that point
 
 		return result
 
@@ -468,10 +468,10 @@ if __name__ == '__main__':
 	experiment_log.load()
 
 	# t = experiment_log.magnitudes["px_cam"].lst_timestamp
-	# win_size = 11; poly_order = 2;
+	# win_half_size = 11; poly_order = 2;
 	# for axis in ("X", "Y", "Z"):
-	# 	experiment_log.add_magnitude(("v{}_cam".format(axis), "mag"), lst_timestamp=t, lst_measured=DerivativeHelper.differentiate_whole(experiment_log.magnitudes["p{}_cam".format(axis.lower())].lst_measured, t, poly_order=poly_order, win_size=win_size, deriv=1))
-	# 	experiment_log.add_magnitude(("a{}_cam".format(axis), "mag"), lst_timestamp=t, lst_measured=DerivativeHelper.differentiate_whole(experiment_log.magnitudes["p{}_cam".format(axis.lower())].lst_measured, t, poly_order=poly_order, win_size=win_size, deriv=2))
+	# 	experiment_log.add_magnitude(("v{}_cam".format(axis), "mag"), lst_timestamp=t, lst_measured=DerivativeHelper.differentiate_whole(experiment_log.magnitudes["p{}_cam".format(axis.lower())].lst_measured, t, poly_order=poly_order, win_half_size=win_half_size, deriv=1))
+	# 	experiment_log.add_magnitude(("a{}_cam".format(axis), "mag"), lst_timestamp=t, lst_measured=DerivativeHelper.differentiate_whole(experiment_log.magnitudes["p{}_cam".format(axis.lower())].lst_measured, t, poly_order=poly_order, win_half_size=win_half_size, deriv=2))
 	# 	plt.figure()
 	# 	plt.subplot(3,1,1); plt.plot(t, experiment_log.magnitudes["p{}_cam".format(axis.lower())].lst_measured)
 	# 	plt.subplot(3,1,2); plt.plot(t, experiment_log.magnitudes["v{}_cam".format(axis.lower())].lst_measured)
