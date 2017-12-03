@@ -17,15 +17,15 @@ class MagnitudeLog (object):
 	This class logs a magnitude (single value) over time. It can then save the log to a file as well as plot the results.
 	"""
 
-	def __init__(self, experiment_start_datetime, str_magnitude=""):
+	def __init__(self, experiment_start_datetime, str_magnitude="", log_folder="log"):
 		self.lst_timestamp = []  # List that keeps track of timestamp values at which data was collected
 		self.lst_time_float = []  # List that keeps track of timestamp values at which data was collected, but in float
 		self.lst_measured = []  # List that keeps track of the actual magnitude values over time
 		self.str_magnitude = str_magnitude.replace('_', ' ')  # For plot titles, legends... replace "_" by " " for readability
 		self.EXPERIMENT_START_DATETIME = experiment_start_datetime  # Datetime at which experiment/flight started
 		self.LOG_FILENAME = self.update_log_filename()  # Filename that will be used when saving the log to a file
-		self.LOG_FOLDER = "log/{}".format(experiment_start_datetime)  # Folder where the log will be saved to
-		self.SYM_FOLDER = "log/{}".format(str_magnitude)  # Folder where a symlink to the log file will be created
+		self.LOG_FOLDER = "{}/{}".format(log_folder, experiment_start_datetime)  # Folder where the log will be saved to
+		self.SYM_FOLDER = "{}/{}".format(log_folder, str_magnitude)  # Folder where a symlink to the log file will be created
 		self.custom_plot = None  # If provided, it indicates a custom function responsible for plotting the data
 
 	def clear(self):
@@ -153,8 +153,8 @@ class PidLog (MagnitudeLog):
 	It can then save the log to a file as well as plot the results.
 	"""
 
-	def __init__(self, experiment_start_datetime, str_magnitude="", pid_offset=0):
-		super(PidLog, self).__init__(experiment_start_datetime, str_magnitude)
+	def __init__(self, experiment_start_datetime, str_magnitude="", log_folder="log", pid_offset=0):
+		super(PidLog, self).__init__(experiment_start_datetime, str_magnitude, log_folder)
 		self.lst_setpoint = []  # On top of the variables from MagnitudeLog, init the ones that are PID specific
 		self.lst_out_P = []
 		self.lst_out_I = []
@@ -309,7 +309,8 @@ class ExperimentLog:
 	It basically is an array of MagnitudeLog's and it has batch functions to call MagnitudeLog's methods on each element.
 	"""
 
-	def __init__(self, experiment_start_datetime, log_desc):
+	def __init__(self, experiment_start_datetime, log_desc, log_folder="log"):
+		self.LOG_FOLDER = log_folder
 		self.EXPERIMENT_START_DATETIME = experiment_start_datetime
 		self.magnitudes = {}  # Dictionary containing all magnitudes associated with the current experiment/flight
 		for desc in log_desc.iteritems():  # Create and initialize MagnitudeLog's based on the log_desc
@@ -379,12 +380,12 @@ class ExperimentLog:
 		str_magnitude, log_type = log_desc
 		log_type = log_type.lower()  # Case insensitive comparison to avoid problems
 		if log_type == "piv":
-			self.magnitudes["{}_pos".format(str_magnitude.lower())] = PidLog(experiment_start_datetime, "{}_pos".format(str_magnitude))
-			self.magnitudes["{}_vel".format(str_magnitude.lower())] = PidLog(experiment_start_datetime, "{}_vel".format(str_magnitude))
+			self.magnitudes["{}_pos".format(str_magnitude.lower())] = PidLog(experiment_start_datetime, "{}_pos".format(str_magnitude), self.LOG_FOLDER)
+			self.magnitudes["{}_vel".format(str_magnitude.lower())] = PidLog(experiment_start_datetime, "{}_vel".format(str_magnitude), self.LOG_FOLDER)
 		elif log_type == "pid":
-			self.magnitudes[str_magnitude.lower()] = PidLog(experiment_start_datetime, str_magnitude)
+			self.magnitudes[str_magnitude.lower()] = PidLog(experiment_start_datetime, str_magnitude, self.LOG_FOLDER)
 		else:
-			self.magnitudes[str_magnitude.lower()] = MagnitudeLog(experiment_start_datetime, str_magnitude)
+			self.magnitudes[str_magnitude.lower()] = MagnitudeLog(experiment_start_datetime, str_magnitude, self.LOG_FOLDER)
 
 		for key, value in kwargs.iteritems():
 			setattr(self.magnitudes[str_magnitude.lower()], key, value)
