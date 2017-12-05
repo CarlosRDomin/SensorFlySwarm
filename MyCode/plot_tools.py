@@ -17,15 +17,16 @@ class MagnitudeLog (object):
 	This class logs a magnitude (single value) over time. It can then save the log to a file as well as plot the results.
 	"""
 
-	def __init__(self, experiment_start_datetime, str_magnitude="", log_folder="log"):
+	def __init__(self, experiment_start_datetime, str_magnitude="", log_folder="log", save_sym=True):
 		self.lst_timestamp = []  # List that keeps track of timestamp values at which data was collected
 		self.lst_time_float = []  # List that keeps track of timestamp values at which data was collected, but in float
 		self.lst_measured = []  # List that keeps track of the actual magnitude values over time
 		self.str_magnitude = str_magnitude.replace('_', ' ')  # For plot titles, legends... replace "_" by " " for readability
 		self.EXPERIMENT_START_DATETIME = experiment_start_datetime  # Datetime at which experiment/flight started
 		self.LOG_FILENAME = self.update_log_filename()  # Filename that will be used when saving the log to a file
-		self.LOG_FOLDER = "{}/{}".format(log_folder, experiment_start_datetime)  # Folder where the log will be saved to
-		self.SYM_FOLDER = "{}/{}".format(log_folder, str_magnitude)  # Folder where a symlink to the log file will be created
+		self.LOG_FOLDER = os.path.join(log_folder, experiment_start_datetime)  # Folder where the log will be saved to
+		self.SYM_FOLDER = os.path.join(log_folder, str_magnitude)  # Folder where a symlink to the log file will be created
+		self.save_sym = save_sym
 		self.custom_plot = None  # If provided, it indicates a custom function responsible for plotting the data
 
 	def clear(self):
@@ -39,7 +40,7 @@ class MagnitudeLog (object):
 	def create_log_dirs(self):
 		if not os.path.exists(self.LOG_FOLDER):
 			os.makedirs(self.LOG_FOLDER)
-		if not os.path.exists(self.SYM_FOLDER):
+		if self.save_sym and not os.path.exists(self.SYM_FOLDER):
 			os.makedirs(self.SYM_FOLDER)
 
 	def update_log_filename(self):
@@ -68,7 +69,7 @@ class MagnitudeLog (object):
 		if timestamp is None:
 			self.lst_timestamp.append(datetime.now())
 		elif isinstance(timestamp, timedelta):  # Can't plot a timedelta axis, so add today's date to convert them to datetime (so we can plot them)
-			self.lst_timestamp.append(timestamp + datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
+			self.lst_timestamp.append(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timestamp)
 		else:
 			self.lst_timestamp.append(timestamp)
 		self.lst_time_float.append((self.lst_timestamp[-1] - self.lst_timestamp[0]).total_seconds())
@@ -105,7 +106,7 @@ class MagnitudeLog (object):
 
 		self.create_log_dirs()  # Make sure LOG_FOLDER and SYM_FOLDER exist so saving the figure doesn't raise an exception
 		fig.savefig("{}.pdf".format(self.get_log_filename()))
-		if not os.path.exists("{}.pdf".format(self.get_log_filename(is_sym=True))):  # Create symlink (if not already created, would raise an exception in that case)
+		if self.save_sym and not os.path.exists("{}.pdf".format(self.get_log_filename(is_sym=True))):  # Create symlink (if not already created, would raise an exception in that case)
 			os.symlink("{}.pdf".format(os.path.abspath(self.get_log_filename())), "{}.pdf".format(self.get_log_filename(is_sym=True)))  # Create a symlink to keep logs organized by date and also by magnitude (make sure symlink source path is absolute!!)
 
 		return fig
@@ -128,7 +129,7 @@ class MagnitudeLog (object):
 		self.create_log_dirs()  # Make sure LOG_FOLDER and SYM_FOLDER exist so saving the arrays doesn't raise an exception
 		self.shift_time_float(t0)  # If necessary, shift lst_time_float (maybe other magnitudes started logging earlier than self.lst_timestamp[0])
 		np.savez_compressed("{}.npz".format(self.get_log_filename()), t=self.get_timestamp(), tFloat=self.get_time_float(), measured=self.get_measured())
-		if not os.path.exists("{}.npz".format(self.get_log_filename(is_sym=True))):  # Create symlink (if not already created, would raise an exception in that case)
+		if self.save_sym and not os.path.exists("{}.npz".format(self.get_log_filename(is_sym=True))):  # Create symlink (if not already created, would raise an exception in that case)
 			os.symlink("{}.npz".format(os.path.abspath(self.get_log_filename())), "{}.npz".format(self.get_log_filename(is_sym=True)))  # Create a symlink to keep logs organized by date and also by magnitude (make sure symlink source path is absolute!!)
 
 	def load(self):
@@ -153,8 +154,8 @@ class PidLog (MagnitudeLog):
 	It can then save the log to a file as well as plot the results.
 	"""
 
-	def __init__(self, experiment_start_datetime, str_magnitude="", log_folder="log", pid_offset=0):
-		super(PidLog, self).__init__(experiment_start_datetime, str_magnitude, log_folder)
+	def __init__(self, experiment_start_datetime, str_magnitude="", log_folder="log", save_sym=True, pid_offset=0):
+		super(PidLog, self).__init__(experiment_start_datetime, str_magnitude, log_folder, save_sym)
 		self.lst_setpoint = []  # On top of the variables from MagnitudeLog, init the ones that are PID specific
 		self.lst_out_P = []
 		self.lst_out_I = []
@@ -216,7 +217,7 @@ class PidLog (MagnitudeLog):
 		if timestamp is None:
 			self.lst_timestamp.append(datetime.now())
 		elif isinstance(timestamp, timedelta):  # Can't plot a timedelta axis, so add today's date to convert them to datetime (so we can plot them)
-			self.lst_timestamp.append(timestamp + datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
+			self.lst_timestamp.append(datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timestamp)
 		else:
 			self.lst_timestamp.append(timestamp)
 
@@ -271,7 +272,7 @@ class PidLog (MagnitudeLog):
 
 		self.create_log_dirs()  # Make sure LOG_FOLDER and SYM_FOLDER exist so saving the figure doesn't raise an exception
 		fig.savefig("{}.pdf".format(self.get_log_filename()))
-		if not os.path.exists("{}.pdf".format(self.get_log_filename(True))):  # Create symlink (if not already created, would raise an exception in that case)
+		if self.save_sym and not os.path.exists("{}.pdf".format(self.get_log_filename(True))):  # Create symlink (if not already created, would raise an exception in that case)
 			os.symlink("{}.pdf".format(os.path.abspath(self.get_log_filename())), "{}.pdf".format(self.get_log_filename(True)))  # Create a symlink to keep logs organized by date and also by magnitude (make sure symlink source path is absolute!!)
 
 		return fig
@@ -285,7 +286,7 @@ class PidLog (MagnitudeLog):
 		np.savez_compressed("{}.npz".format(self.get_log_filename()),
 							t=self.get_timestamp(), tFloat=self.get_time_float(), setpoint=self.get_setpoint(), measured=self.get_measured(),
 							out_P=self.get_out_P(), out_I=self.get_out_I(), out_D=self.get_out_D(), offset=self.pid_offset)
-		if not os.path.exists("{}.npz".format(self.get_log_filename(True))):  # Create symlink (if not already created, would raise an exception in that case)
+		if self.save_sym and not os.path.exists("{}.npz".format(self.get_log_filename(True))):  # Create symlink (if not already created, would raise an exception in that case)
 			os.symlink("{}.npz".format(os.path.abspath(self.get_log_filename())), "{}.npz".format(self.get_log_filename(True)))  # Create a symlink to keep logs organized by date and also by magnitude (make sure symlink source path is absolute!!)
 
 	def load(self):
@@ -309,8 +310,9 @@ class ExperimentLog:
 	It basically is an array of MagnitudeLog's and it has batch functions to call MagnitudeLog's methods on each element.
 	"""
 
-	def __init__(self, experiment_start_datetime, log_desc, log_folder="log"):
+	def __init__(self, experiment_start_datetime, log_desc, log_folder="log", save_sym=True):
 		self.LOG_FOLDER = log_folder
+		self.SAVE_SYM = save_sym
 		self.EXPERIMENT_START_DATETIME = experiment_start_datetime
 		self.magnitudes = {}  # Dictionary containing all magnitudes associated with the current experiment/flight
 		for desc in log_desc.iteritems():  # Create and initialize MagnitudeLog's based on the log_desc
@@ -380,12 +382,12 @@ class ExperimentLog:
 		str_magnitude, log_type = log_desc
 		log_type = log_type.lower()  # Case insensitive comparison to avoid problems
 		if log_type == "piv":
-			self.magnitudes["{}_pos".format(str_magnitude.lower())] = PidLog(experiment_start_datetime, "{}_pos".format(str_magnitude), self.LOG_FOLDER)
-			self.magnitudes["{}_vel".format(str_magnitude.lower())] = PidLog(experiment_start_datetime, "{}_vel".format(str_magnitude), self.LOG_FOLDER)
+			self.magnitudes["{}_pos".format(str_magnitude.lower())] = PidLog(experiment_start_datetime, "{}_pos".format(str_magnitude), self.LOG_FOLDER, self.SAVE_SYM)
+			self.magnitudes["{}_vel".format(str_magnitude.lower())] = PidLog(experiment_start_datetime, "{}_vel".format(str_magnitude), self.LOG_FOLDER, self.SAVE_SYM)
 		elif log_type == "pid":
-			self.magnitudes[str_magnitude.lower()] = PidLog(experiment_start_datetime, str_magnitude, self.LOG_FOLDER)
+			self.magnitudes[str_magnitude.lower()] = PidLog(experiment_start_datetime, str_magnitude, self.LOG_FOLDER, self.SAVE_SYM)
 		else:
-			self.magnitudes[str_magnitude.lower()] = MagnitudeLog(experiment_start_datetime, str_magnitude, self.LOG_FOLDER)
+			self.magnitudes[str_magnitude.lower()] = MagnitudeLog(experiment_start_datetime, str_magnitude, self.LOG_FOLDER, self.SAVE_SYM)
 
 		for key, value in kwargs.iteritems():
 			setattr(self.magnitudes[str_magnitude.lower()], key, value)
