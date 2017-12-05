@@ -645,6 +645,11 @@ class Spotter:
 		logging.disable(logging.DEBUG)  # Seems to work better than .basicConfig(INFO), especially if logging has already been initialized -> Only show messages of level INFO or higher
 
 		save_logs = True
+		# Create experiment folder (unless collecting data for our actuation, in which case Matlab has to create the folder first)
+		if self.EXPERIMENT_TYPE != "Ours":
+			while os.path.exists(self.get_experiment_log_folder()):  # Make sure we don't overwrite any data, so keep increasing experiment number until we find a "free" one
+				self.EXPERIMENT_NUMBER += 1
+			os.makedirs(self.get_experiment_log_folder())  # Ensure log folder exists (else code will fail)
 		try:
 			self.connect_to_cf(connect_to)  # Connect to the CrazyFlie
 			for w in self.workers:
@@ -653,8 +658,6 @@ class Spotter:
 			self.init_UI_window()  # Open a window to receive user input to control the CF
 
 			# Save experiment constants
-			if self.EXPERIMENT_TYPE != "Ours" and not os.path.exists(self.get_experiment_log_folder()):
-				os.makedirs(self.get_experiment_log_folder())  # Make sure log folder exists (unless it's our actuation, then we want to wait for Matlab to do so)
 			for w in self.workers:
 				try:
 					np.savez_compressed(os.path.join(self.get_experiment_log_folder(), "log_experiment_constants.npz"),
@@ -778,7 +781,7 @@ class Spotter:
 						for w in self.workers:  # Start collecting data
 							w.droneId = 1
 							w.experiment_log.update(droneId=w.droneId)
-							w.cf_str_status = "{}-exp{}".format(self.EXPERIMENT_TYPE, self.EXPERIMENT_NUMBER)
+							w.cf_str_status = "{}_exp{}".format(self.EXPERIMENT_TYPE, self.EXPERIMENT_NUMBER)
 						self.curr_droneId_deadline = datetime.now() + timedelta(seconds=5)
 				else:  # Any other key ends the experiment
 					for w in self.workers:
