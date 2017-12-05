@@ -123,7 +123,7 @@ class WorkerDrone:
 		self.cf_pos_tracked = False
 		self.ignore_cam_until = datetime.now()
 		self.command_info = None
-		self.cf_str_status = "Waiting for Matlab..."
+		self.cf_str_status = "Initializing"
 		self.cf_roll = self.cf_pitch = self.cf_yaw = self.aX_world = self.cnt_iteration = 0
 		self.cf_curr_pos = np.array([0.0, 0.0, 0.0])
 		self.cf_curr_pos_t = datetime.now() - timedelta(seconds=self.MAX_INTERVAL_FOR_VEL_ESTIMATION)
@@ -350,12 +350,14 @@ class Spotter:
 	SETTINGS_SEPARATOR = UvcCapture.SETTINGS_SEPARATOR  # We save files in a csv type of way
 	CAM_FOCAL_LENGTH_IN_PX = 1250.0
 	CF_RADIUS_IN_M = 0.02
-	LOG_FOLDER = "../../Mobisys 18 - Paper/Code/data/Real/Ours/"
-	NUM_WORKERS = 6
+	LOG_PARENT_FOLDER = "../../Mobisys 18 - Paper/Code/data/Real/"
+	NUM_WORKERS = 1
 
-	def __init__(self, experiment_number, starting_iter=1, bool_world_coords_pattern=False):
+	def __init__(self, experiment_type, experiment_number, starting_iter=1, bool_world_coords_pattern=False):
 		self.t_start = self.t_frame = self.t_last_frame = datetime.now()
 		self.t_events = []
+		self.LOG_FOLDER = os.path.join(self.LOG_PARENT_FOLDER, experiment_type) + '/'
+		self.EXPERIMENT_TYPE = experiment_type
 		self.EXPERIMENT_NUMBER = experiment_number
 		self.EXPERIMENT_START_DATETIME = str(self.t_start)[:-7].replace(':', '-')
 		self.VIDEO_FOLDER = "img-ns/{}".format(self.EXPERIMENT_START_DATETIME)
@@ -429,7 +431,8 @@ class Spotter:
 		# Open an SDL2 window to track keyboard keydown events and use it to send commands to the CF
 		sdl2.ext.init()
 		self.window_for_kb_input = sdl2.ext.Window("Window to receive keyboard input", size=(400, 300), position=(200,200))
-		#self.window_for_kb_input.show()  # Don't show until Matlab command is loaded
+		if self.EXPERIMENT_TYPE != "Ours":
+			self.window_for_kb_input.show()  # If collecting data for our actuation, don't show until Matlab command is loaded
 		sdl2.ext.fill(self.window_for_kb_input.get_surface(), sdl2.ext.Color(255,0,0))
 		self.window_for_kb_input.refresh()
 
@@ -579,7 +582,7 @@ class Spotter:
 				link_uri = available_links[0][0]
 
 			logging.info("Initializing CrazyFlie (connecting to '{}').".format(link_uri))
-			self.workers.append(WorkerDrone(link_uri, "experiment{}/iteration{}".format(self.EXPERIMENT_NUMBER, self.experiment_iter), self.LOG_FOLDER))
+			self.workers.append(WorkerDrone(link_uri, "experiment{}{}".format(self.EXPERIMENT_NUMBER, "" if self.EXPERIMENT_TYPE!= "Ours" else "/iteration{}".format(self.experiment_iter)), self.LOG_FOLDER))
 
 		# If we got here, we're attempting to connect to connect_to_num CFs. Let's make sure connection succeeds on time
 		while np.any([w.cf_radio_connecting for w in self.workers]):
@@ -648,6 +651,10 @@ class Spotter:
 				w.setup_cf()  # Can't initialize LogConfig until we're connected, because it needs to check that the variables we'd like to add are in the TOC. So this function must be called after connect_to_cf()
 			self.init_video_cam_and_cv_algorithm()  # Connect to the first available camera, load default settings, etc.
 			self.init_UI_window()  # Open a window to receive user input to control the CF
+
+			# Save experiment constants
+			if self.EXPERIMENT_TYPE != "Ours" and not os.path.exists(self.get_experiment_log_folder()):
+				os.makedirs(self.get_experiment_log_folder())  # Make sure log folder exists (unless it's our actuation, then we want to wait for Matlab to do so)
 			for w in self.workers:
 				try:
 					np.savez_compressed(os.path.join(self.get_experiment_log_folder(), "log_experiment_constants.npz"),
@@ -753,16 +760,26 @@ class Spotter:
 				if '0' <= key <= '9': continue
 				key = key.lower()  # Convert to lowercase so we don't have to worry about different cases
 
-				if key=='n' and self.actuation_command is not None:  # Only listen to "next" commands after Matlab has issued a new command
-					cv2.destroyAllWindows()  # Close windows so fps doesn't drop
-					self.window_for_kb_input.hide()
-					for w in self.workers:
-						w.droneId = self.next_droneId
-						w.experiment_log.update(droneId=w.droneId)
-						self.next_droneId = 1 + (self.next_droneId % self.NUM_WORKERS)
-						self.curr_droneId_deadline = datetime.now() + timedelta(seconds=2)
-						self.window_for_kb_input.title = "'{}' -> Drone {} flying (iter {}), at t={}".format(key, w.droneId, self.experiment_iter, str(datetime.now().time())[:-3])
-					return True  # Don't listen to more keys until we're done collecting data
+				if key=='n':
+					if self.EXPERIMENT_TYPE == "Ours":
+						if self.actuation_command is not None:  # Only listen to "next" commands after Matlab has issued a new command
+							cv2.destroyAllWindows()  # Close windows so fps doesn't drop
+							self.window_for_kb_input.hide()
+							for w in self.workers:
+								w.droneId = self.next_droneId
+								w.experiment_log.update(droneId=w.droneId)
+							self.next_droneId = 1 + (self.next_droneId % self.NUM_WORKERS)
+							self.curr_droneId_deadline = datetime.now() + timedelta(seconds=2)
+							self.window_for_kb_input.title = "'{}' -> Drone {} flying (iter {}), at t={}".format(key, w.droneId, self.experiment_iter, str(datetime.now().time())[:-3])
+							return True  # Don't listen to more keys until we're done collecting data
+					else:  # Any other type of actuation that's not ours, simply collect data for 30s
+						cv2.destroyAllWindows()  # Close windows so fps doesn't drop
+						self.window_for_kb_input.hide()
+						for w in self.workers:  # Start collecting data
+							w.droneId = 1
+							w.experiment_log.update(droneId=w.droneId)
+							w.cf_str_status = "{}-exp{}".format(self.EXPERIMENT_TYPE, self.EXPERIMENT_NUMBER)
+						self.curr_droneId_deadline = datetime.now() + timedelta(seconds=5)
 				else:  # Any other key ends the experiment
 					for w in self.workers:
 						w.cf_radio_connected = False
@@ -872,7 +889,7 @@ class Spotter:
 				cv2.circle(frame_resized, tuple(command_ini_pos_resized[0:2].astype(int)), int(command_ini_pos_resized[2]), self.COLOR_INI_COMMAND, 5)
 
 			if not w.cf_pos_tracked: continue
-			curr_pos_resized = self.cf_world_to_img_coords(w.cf_curr_pos) * img_resize_factor
+			curr_pos_resized = self.cf_world_to_img_coords(w.cf_curr_pos-w.POS_OFFSET) * img_resize_factor
 			str_cf_id = "{}".format(i+1)  # w.cf_radio_ch
 			txt_size = np.array(cv2.getTextSize(str_cf_id, font, font_scale, font_thickness)[0])
 			txt_pos = curr_pos_resized[0:2] - txt_size/2
@@ -894,13 +911,10 @@ class Spotter:
 			cv2.imwrite(os.path.join(self.VIDEO_FOLDER, self.t_frame.strftime("out_%H-%M-%S-%f.jpg")), self.cv_frame_out)
 		else:
 			cv2.imshow("", self.cv_frame_out)
-			key = cv2.waitKey(1)
-			if key == ord('q'):
-				return False
+			cv2.waitKey(1)
 			if any([w.command_info is not None for w in self.workers]):  # Only show kb if there are any workers ready to receive a command
 				self.window_for_kb_input.show()
 		self.t_events.append(datetime.now())
-		return True
 
 	def load_actuation_command_if_needed(self):
 		# Only load the command if it hasn't been loaded yet
@@ -952,15 +966,16 @@ class Spotter:
 			if self.curr_droneId_deadline is not None and datetime.now() > self.curr_droneId_deadline:
 				self.curr_droneId_deadline = None  # Make sure we don't enter this block again
 
-				# Check if this is the last drone in this iteration
-				if self.next_droneId == 1:  # Equivalent to: w.droneId == self.NUM_WORKERS
-					self.curr_iter_deadline = datetime.now() + timedelta(seconds=1.5)  # Give it a couple seconds just in case before ending the iteration and saving logs
-					w.command_info = None
-					w.cf_str_status = "Saving iteration {}...".format(self.experiment_iter)
-				else:
-					w.command_info = self.actuation_command[self.next_droneId-1, :]  # Load info of next command
-					w.cf_str_status = "Exp{} i{:02d} d{}".format(self.EXPERIMENT_NUMBER, self.experiment_iter, self.next_droneId)
-
+				if self.EXPERIMENT_TYPE != "Ours":  # Any type of actuation that's not ours collects data once and is done
+					return datetime.now()
+				else:  # On the other hand, our actuation needs to keep collecting for each drone and each iteration...
+					# Check if this is the last drone in this iteration
+					if self.next_droneId == 1:  # Equivalent to: w.droneId == self.NUM_WORKERS
+						self.curr_iter_deadline = datetime.now() + timedelta(seconds=1.5)  # Give it a couple seconds just in case before ending the iteration and saving logs
+						w.command_info = None
+						w.cf_str_status = "Saving iteration {}...".format(self.experiment_iter)
+					else:
+						self.set_worker_command_info(w)
 
 				w.droneId = 0  # And stop "collecting data"
 				w.experiment_log.update(droneId=w.droneId)
@@ -983,10 +998,14 @@ class Spotter:
 					return datetime.now()
 				else:  # Start new logs
 					w.ini_logs("experiment{}/iteration{}".format(self.EXPERIMENT_NUMBER, self.experiment_iter), self.LOG_FOLDER)
+
 		self.t_events.append(datetime.now())
 
-		# Last, save output images to disk for debugging and process kb input to control the experiment
-		if not self.save_algo_iteration() or not self.process_kb_input():  # Process kb input and take action if necessary (will return False when user wants to stop the experiment)
+		# And save the intermediate and output frames/images to disk for debugging
+		self.save_algo_iteration()
+
+		# Last, process kb input to control the experiment
+		if not self.process_kb_input():  # Process kb input and take action if necessary (will return False when user wants to stop the experiment)
 			return datetime.now() + timedelta(seconds=2)  # For debugging purposes, it's great to have a few additional seconds of video&log after an experiment is stopped (helps see why it crashed)
 		self.t_events.append(datetime.now())
 
@@ -999,5 +1018,6 @@ class Spotter:
 
 
 if __name__ == '__main__':
-	s = Spotter(experiment_number=1, starting_iter=1, bool_world_coords_pattern=True)
+	s = Spotter(experiment_type="Random", experiment_number=1, starting_iter=1, bool_world_coords_pattern=True)
 	s.run_experiment(['radio://0/75/2M'])
+	print('Done')
