@@ -82,7 +82,7 @@ class MagnitudeLog (object):
 			return None
 		if len(self.lst_timestamp) < 1:
 			self.lst_timestamp = [datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(seconds=i) for i in range(0, len(self.lst_measured))]
-		plot_timestamp = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + np.array([(t-self.lst_timestamp[0]) for t in self.lst_timestamp])
+		plot_timestamp = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + np.array([timedelta(seconds=t) for t in self.lst_time_float])  # np.array([(t-self.lst_timestamp[0]) for t in self.lst_timestamp])
 
 		if self.custom_plot is not None:
 			fig = self.custom_plot()
@@ -230,7 +230,7 @@ class PidLog (MagnitudeLog):
 			return None
 		if len(self.lst_timestamp) < 1:
 			self.lst_timestamp = [datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(seconds=i) for i in range(0, len(self.lst_measured))]
-		plot_timestamp = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + np.array([(t-self.lst_timestamp[0]) for t in self.lst_timestamp])
+		plot_timestamp = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + np.array([timedelta(seconds=t) for t in self.lst_time_float])  # np.array([(t-self.lst_timestamp[0]) for t in self.lst_timestamp])
 
 		fig, ax1 = plt.subplots()
 		ax1.plot(plot_timestamp, self.get_setpoint(), 'r--', label=self.str_magnitude + ' SetPoint', linewidth=1.5)
