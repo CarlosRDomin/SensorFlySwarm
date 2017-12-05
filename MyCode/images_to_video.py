@@ -28,7 +28,7 @@ def generate_video_from_images(img_folder_or_filelist, video_folder="videos", vi
 			video_filename = "video"  # So just make sure it's not empty
 	elif isinstance(img_folder_or_filelist, str):
 		files = list()
-		files_in_folder = os.listdir(img_folder_or_filelist)
+		files_in_folder = sorted(os.listdir(img_folder_or_filelist))
 		for f in files_in_folder:
 			if not f.startswith(img_filelist_prefix): continue  # Only consider files that start with img_filelist_prefix
 			f_full_path = os.path.join(img_folder_or_filelist, f)  # Need to append folder path in front of file name
@@ -52,11 +52,11 @@ def generate_video_from_images(img_folder_or_filelist, video_folder="videos", vi
 
 		for i, f in enumerate(files):
 			video.write(cv2.imread(f))
-			print "{} out of {} frames ({:6.2f}%) written! Time elapsed: {:.2f}s".format(i+1, len(files), 100.0*(i+1)/len(files), (datetime.now()-t_start).total_seconds()),
+			print("{} out of {} frames ({:6.2f}%) written! Time elapsed: {:.2f}s".format(i+1, len(files), 100.0*(i+1)/len(files), (datetime.now()-t_start).total_seconds()))
 
 		video.release()  # Make sure to release the video so it's actually written to disk
-		print "Video successfully saved as '{}' in a total of {:.2f}s! :)".format(video_filename, (datetime.now()-t_start).total_seconds())
+		print("Video successfully saved as '{}' in a total of {:.2f}s! :)".format(video_filename, (datetime.now()-t_start).total_seconds()))
 
 
 if __name__ == '__main__':
-	generate_video_from_images(os.path.join("img-ns", "2016-11-03 03-05-11"), video_fps=20, img_filelist_prefix="out_")
+	generate_video_from_images(os.path.join("img-ns", "2017-12-05 00-48-39"), video_fps=35, img_filelist_prefix="out_")
