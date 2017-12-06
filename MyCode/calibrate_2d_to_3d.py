@@ -7,7 +7,7 @@
 import logging
 import cv2
 import vision_aux_functions as auxV
-from full_control_with_cam_IPSN import Spotter, FakeWorkerDrone, GroundTruthThread
+from collect_data_MobiSys import Spotter, FakeWorkerDrone
 from uvc_capture import UvcCapture
 from calibrate_cam_params import CALIB_FOLDER, generate_calibration_filename, ensure_folder_exists
 from datetime import datetime
@@ -20,7 +20,7 @@ def find_focal_length_in_px(radius_in_m, dist_in_m):
 	:param dist_in_m: Distance (in m) between the camera and the marker
 	:return: Focal length (in px) of the camera, which is the apparent length (in px) of an object that measures "x" m and is placed "x" m away from the camera.
 	"""
-	cv = Spotter()
+	cv = Spotter(experiment_type="test", experiment_number=1)
 	cv.init_video_cam_and_cv_algorithm(False)
 	cv.video_capture.do_undistort = False
 	cv.workers.append(FakeWorkerDrone())  # Add a fake worker (we just need the cv algorithm to look for 1 ping pong ball)
@@ -51,8 +51,8 @@ def estimate_3d_location(use_spotter_cam=True):
 	:param use_spotter_cam: If True, use Spotter's camera settings; If False, use GroundTruthThread's cam settings
 	"""
 	if not use_spotter_cam:
-		Spotter.CAMERA_SETTINGS_FILE = GroundTruthThread.CAMERA_SETTINGS_FILE
-	cv = Spotter(bool_world_coords_pattern=True)
+		pass  # Spotter.CAMERA_SETTINGS_FILE = GroundTruthThread.CAMERA_SETTINGS_FILE
+	cv = Spotter(experiment_type="test", experiment_number=1, bool_world_coords_pattern=True)
 	cv.init_video_cam_and_cv_algorithm(False)
 	cv.workers.append(FakeWorkerDrone())  # Add a fake worker (we just need the cv algorithm to look for 1 ping pong ball)
 
@@ -62,7 +62,7 @@ def estimate_3d_location(use_spotter_cam=True):
 	while cv2.waitKey(1) == 255:  # OpenCV 3.1 and older used to return <0 when no key was pressed. Seems like now 255 is returned in that case...
 		cf_curr_pos = cv.detect_cf_in_camera()[0]  # detect_cf_in_camera() now returns an array -> Element [0] is the "worker" we're interested in
 		if cf_curr_pos is not None:
-			world_coords = cv.img_to_cf_world_coords(cf_curr_pos)
+			world_coords = cv.img_to_cf_world_coords(cf_curr_pos) + cv.workers[0].POS_OFFSET
 			cv2.circle(cv.cv_cam_frame, tuple(cf_curr_pos[0:2].astype(int)), int(cf_curr_pos[2]), (255, 0, 0), 1)
 			cv2.putText(cv.cv_cam_frame, "x={p[0]:.2f}m, y={p[1]:.2f}m, z={p[2]:.2f}m; dist={d:.2f}cm".format(p=world_coords, d=100*auxV.world_to_cam_coords([world_coords[0], -world_coords[1], -world_coords[2]], cv.world_to_camera_transf)[2]), (50, cv.cv_cam_frame.shape[0]-50), cv2.FONT_HERSHEY_DUPLEX, 0.9, (0, 0, 200), 1, cv2.LINE_AA)
 		else:
@@ -80,7 +80,7 @@ def estimate_cam_to_world_transform(calibration_file, is_chessboard=False, cell_
 	:param cell_size: Float indicating the distance (in m) between two consecutive points in the pattern grid
 	:param use_spotter_cam: If True, use Spotter's camera settings; If False, use GroundTruthThread's cam settings
 	"""
-	cam = UvcCapture.new_from_settings(Spotter.CAMERA_SETTINGS_FILE if use_spotter_cam else GroundTruthThread.CAMERA_SETTINGS_FILE)
+	cam = UvcCapture.new_from_settings(Spotter.CAMERA_SETTINGS_FILE)  # if use_spotter_cam else GroundTruthThread.CAMERA_SETTINGS_FILE)
 	if cam is None:
 		logging.error("Please connect the camera, can't do this without you :P")
 		return
