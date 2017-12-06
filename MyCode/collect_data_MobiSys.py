@@ -94,6 +94,7 @@ class FakeWorkerDrone:
 	"""
 
 	POS_Z_ALPHA = 0.8
+	POS_OFFSET = np.array([0.25, 0, 0])
 
 	def __init__(self, curr_pos=np.array([0, 0, 0], dtype=float)):
 		self.cf_curr_pos = curr_pos
@@ -107,7 +108,7 @@ class WorkerDrone:
 	MAX_INTERVAL_FOR_VEL_ESTIMATION = 0.5  # Max time in seconds between 2 consecutive position updates for us to estimate the velocity (as a difference of pos over time)
 	VEL_ALPHA = 0.9
 	POS_Z_ALPHA = 0.8  # Make sure to change FakeWorkerDrone as well for calibrate_2d_to_3d to display the same results
-	POS_OFFSET = np.array([3.1, 0.8, 0.6])
+	POS_OFFSET = np.array([0.25, 0, 0])  # np.array([3.1, 0.8, 0.6])
 	DERIV_FILT_WIN_HALF_SIZE = 11
 	DERIV_FILT_POLY_ORDER = 2
 	PRINT_LOGS = False
@@ -247,7 +248,7 @@ class WorkerDrone:
 
 		if save_logs:  # If the experiment didn't crash before starting (the CF ever took off), plot and save the logs
 			self.experiment_log.save()
-			self.experiment_log.plot(False)
+			#self.experiment_log.plot(False)
 
 	def on_cf_radio_connected(self, link_uri):
 		logging.info("Successfully connected to Crazyflie at '{}'!".format(link_uri))
@@ -363,6 +364,7 @@ class Spotter:
 		self.VIDEO_FOLDER = "img-ns/{}".format(self.EXPERIMENT_START_DATETIME)
 		self.experiment_iter = starting_iter
 		self.actuation_command = None
+		self.start_data_collection_deadline = None
 		self.curr_droneId_deadline = None
 		self.curr_iter_deadline = None
 		self.next_droneId = 1
@@ -653,6 +655,7 @@ class Spotter:
 		try:
 			self.connect_to_cf(connect_to)  # Connect to the CrazyFlie
 			for w in self.workers:
+				w.cf_str_status = "Init... exp{}".format(self.EXPERIMENT_NUMBER)
 				w.setup_cf()  # Can't initialize LogConfig until we're connected, because it needs to check that the variables we'd like to add are in the TOC. So this function must be called after connect_to_cf()
 			self.init_video_cam_and_cv_algorithm()  # Connect to the first available camera, load default settings, etc.
 			self.init_UI_window()  # Open a window to receive user input to control the CF
@@ -674,24 +677,6 @@ class Spotter:
 		# If we got here, either the user ended the experiment, or an exception occurred. Same action regardless:
 		self.cleanup_experiment(save_logs)  # "Cleanup" the experiment: close windows, save logs, etc.
 
-	# def img_to_cf_world_coords(self, cam_coords):
-	# 	if cam_coords is None:
-	# 		return None
-	#
-	# 	pX = -Spotter.CAM_FOCAL_LENGTH_IN_PX				* Spotter.CF_RADIUS_IN_M/cam_coords[2]
-	# 	pY = (cam_coords[0] - self.cv_cam_frame.shape[1]/2)	* Spotter.CF_RADIUS_IN_M/cam_coords[2]
-	# 	pZ = (self.cv_cam_frame.shape[0]/2 - cam_coords[1])	* Spotter.CF_RADIUS_IN_M/cam_coords[2]
-	# 	return np.array([pX, pY, pZ])
-	#
-	# def cf_world_to_img_coords(self, world_coords):
-	# 	if world_coords is None:
-	# 		return None
-	#
-	# 	pX = self.cv_cam_frame.shape[1]/2 - world_coords[1]*Spotter.CAM_FOCAL_LENGTH_IN_PX/world_coords[0]
-	# 	pY = self.cv_cam_frame.shape[0]/2 + world_coords[2]*Spotter.CAM_FOCAL_LENGTH_IN_PX/world_coords[0]
-	# 	r = -Spotter.CF_RADIUS_IN_M						   *Spotter.CAM_FOCAL_LENGTH_IN_PX/world_coords[0]
-	# 	return np.array([pX, pY, r])
-
 	def img_to_cf_world_coords(self, img_coords):
 		"""
 		Obtains the world coordinates of a worker whose marker has been found by the CV algorithm.
@@ -706,7 +691,8 @@ class Spotter:
 		depth_in_m = Spotter.CAM_FOCAL_LENGTH_IN_PX * Spotter.CF_RADIUS_IN_M / img_coords[2]
 		cam_coords = auxV.img_to_cam_coords(np.hstack((img_coords[0:2], depth_in_m)), self.video_capture.camera_matrix, self.video_capture.dist_coefs)
 		world_coords = auxV.cam_to_world_coords(cam_coords, self.world_to_camera_transf)
-		return np.array([1, -1, -1]) * world_coords  # Flip y and z axes sign to convert world->cf coords
+		# return np.array([1, -1, -1]) * world_coords  # Flip y and z axes sign to convert world->cf coords. USE THIS FOR HORIZONTAL CHESSBOARD WITH +X AXIS POINTING TOWARDS CAMERA (+Y AXIS LEFT)
+		return np.array([-1, 1, 1]) * world_coords[[2,1,0]]  # This means: CF_x=-world_z, CF_y=world_y, CF_z=world_x. USE THIS FOR VERTICAL CHESSBOARD WITH +X AXIS UP (+Y AXIS RIGHT)
 
 	def cf_world_to_img_coords(self, cf_world_coords):
 		"""
@@ -718,7 +704,8 @@ class Spotter:
 		"""
 		if cf_world_coords is None:
 			return None
-		world_coords = np.array([1, -1, -1]) * cf_world_coords  # Flip y and z axes sign to convert cf->world coords
+		# world_coords = np.array([1, -1, -1]) * cf_world_coords  # Flip y and z axes sign to convert cf->world coords. USE THIS FOR HORIZONTAL CHESSBOARD WITH +X AXIS POINTING TOWARDS CAMERA (+Y AXIS LEFT)
+		world_coords = np.array([1, 1, -1]) * cf_world_coords[[2, 1, 0]]  # This means: world_x=CF_z, world_y=CF_y, world_z=-CF_x. USE THIS FOR VERTICAL CHESSBOARD WITH +X AXIS UP (+Y AXIS RIGHT)
 
 		cam_coords = auxV.world_to_cam_coords(world_coords, self.world_to_camera_transf)
 		img_coords = auxV.cam_to_img_coords(cam_coords, self.video_capture.camera_matrix, self.video_capture.dist_coefs)
@@ -755,6 +742,8 @@ class Spotter:
 						key = hex(key_orig)
 
 				logging.info("Key: '{}'".format(key))
+				if len(key) != 1: continue  # Ignore special keys
+
 				if '0' <= key <= '9':  # Decide which CF we're going to control (0 controls them all)
 					self.kb_controls_which_cf = int(key)-1
 					if self.kb_controls_which_cf >= len(self.workers):
@@ -764,25 +753,13 @@ class Spotter:
 				key = key.lower()  # Convert to lowercase so we don't have to worry about different cases
 
 				if key=='n':
-					if self.EXPERIMENT_TYPE == "Ours":
-						if self.actuation_command is not None:  # Only listen to "next" commands after Matlab has issued a new command
-							cv2.destroyAllWindows()  # Close windows so fps doesn't drop
-							self.window_for_kb_input.hide()
-							for w in self.workers:
-								w.droneId = self.next_droneId
-								w.experiment_log.update(droneId=w.droneId)
-							self.next_droneId = 1 + (self.next_droneId % self.NUM_WORKERS)
-							self.curr_droneId_deadline = datetime.now() + timedelta(seconds=2)
-							self.window_for_kb_input.title = "'{}' -> Drone {} flying (iter {}), at t={}".format(key, w.droneId, self.experiment_iter, str(datetime.now().time())[:-3])
-							return True  # Don't listen to more keys until we're done collecting data
-					else:  # Any other type of actuation that's not ours, simply collect data for 30s
-						cv2.destroyAllWindows()  # Close windows so fps doesn't drop
-						self.window_for_kb_input.hide()
-						for w in self.workers:  # Start collecting data
-							w.droneId = 1
-							w.experiment_log.update(droneId=w.droneId)
-							w.cf_str_status = "{}_exp{}".format(self.EXPERIMENT_TYPE, self.EXPERIMENT_NUMBER)
-						self.curr_droneId_deadline = datetime.now() + timedelta(seconds=5)
+					if self.EXPERIMENT_TYPE == "Ours" and self.actuation_command is None:
+						continue  # Only listen to "next" commands after Matlab has issued a new command
+
+					self.start_data_collection_deadline = datetime.now() + timedelta(seconds=0.75)  # Start collecting data in a second
+					cv2.destroyAllWindows()  # Close windows so fps doesn't drop
+					self.window_for_kb_input.hide()
+					return True  # Don't listen to more keys until we're done collecting data
 				else:  # Any other key ends the experiment
 					for w in self.workers:
 						w.cf_radio_connected = False
@@ -842,7 +819,7 @@ class Spotter:
 					kp_pos3d[i,:] = self.img_to_cf_world_coords(np.hstack((kp.pt, kp.size/2)))
 				output = []
 				for w in self.workers:
-					w_img_coords = self.cf_world_to_img_coords(w.cf_curr_pos-w.POS_OFFSET)
+					w_img_coords = self.cf_world_to_img_coords(w.cf_curr_pos-w.POS_OFFSET if isinstance(w, WorkerDrone) else w.cf_curr_pos)
 					closest_drone = self.cf_world_to_img_coords(kp_pos3d[np.argmin(np.sum((w.cf_curr_pos - kp_pos3d) ** 2, axis=1)), :])
 					if not all(w.cf_curr_pos == 0):  # Let it initialize
 						closest_drone[2] = w.POS_Z_ALPHA * w_img_coords[2] + (1 - w.POS_Z_ALPHA) * closest_drone[2]  # Smooth depth
@@ -889,7 +866,7 @@ class Spotter:
 				command_ini_pos_resized = self.cf_world_to_img_coords(w.command_info[:3] - w.POS_OFFSET) * img_resize_factor
 				command_end_pos_resized = self.cf_world_to_img_coords(w.command_info[:3] + w.command_info[3:] - w.POS_OFFSET) * img_resize_factor
 				cv2.circle(frame_resized, tuple(command_end_pos_resized[0:2].astype(int)), int(command_end_pos_resized[2]), self.COLOR_END_COMMAND, -1)
-				cv2.circle(frame_resized, tuple(command_ini_pos_resized[0:2].astype(int)), int(command_ini_pos_resized[2]), self.COLOR_INI_COMMAND, 5)
+				cv2.circle(frame_resized, tuple(command_ini_pos_resized[0:2].astype(int)), int(command_ini_pos_resized[2]), self.COLOR_INI_COMMAND, -1)
 
 			if not w.cf_pos_tracked: continue
 			curr_pos_resized = self.cf_world_to_img_coords(w.cf_curr_pos-w.POS_OFFSET) * img_resize_factor
@@ -903,7 +880,7 @@ class Spotter:
 		# Generate the output image: upper part is the cam frame downsized according to img_resize_factor; lower part, str_OSD
 		lines = str_OSD.split(newline_separator)
 		self.cv_frame_out = np.zeros(((frame_resized.shape[0] + margin_y*(len(lines)+1)), frame_resized.shape[1], frame_resized.shape[2]), dtype=frame_resized.dtype)
-		self.cv_frame_out[0:frame_resized.shape[0], :] = frame_resized
+		self.cv_frame_out[0:frame_resized.shape[0], :] = np.fliplr(frame_resized)
 		self.t_events.append(datetime.now())
 
 		for cnt, l in enumerate(lines):  # Add every line of text in str_OSD. Note that putText asks for bottom-left corner of text and that cnt=0 for 1st line. Therefore vertical component should be frame_resized height + OSD padding/border (0.5*margin_y) + text height (1*margin_y)
@@ -912,7 +889,7 @@ class Spotter:
 		# Save the output image to disk (for post-debugging if necessary)
 		if self.workers[0].droneId > 0:
 			cv2.imwrite(os.path.join(self.VIDEO_FOLDER, self.t_frame.strftime("out_%H-%M-%S-%f.jpg")), self.cv_frame_out)
-		else:
+		elif self.start_data_collection_deadline is None:
 			cv2.imshow("", self.cv_frame_out)
 			cv2.waitKey(1)
 			if any([w.command_info is not None for w in self.workers]):  # Only show kb if there are any workers ready to receive a command
@@ -965,16 +942,32 @@ class Spotter:
 			if new_pos_world is not None: new_pos_world += w.POS_OFFSET  # Add offset to set custom {0,0,0} world origin
 			w.control_cf(new_pos_world, self.t_frame)
 
+			# Check if we should start logging for this drone
+			if self.start_data_collection_deadline is not None and self.t_frame > self.start_data_collection_deadline:
+				self.start_data_collection_deadline = None  # Make sure we don't enter this block again
+
+				if self.EXPERIMENT_TYPE == "Ours":
+					w.droneId = self.next_droneId
+					w.experiment_log.update(droneId=w.droneId)
+					self.next_droneId = 1 + (self.next_droneId % self.NUM_WORKERS)
+					self.curr_droneId_deadline = datetime.now() + timedelta(seconds=2)
+					self.window_for_kb_input.title = "'{}' -> Drone {} flying (iter {}), at t={}".format('n', w.droneId, self.experiment_iter, str(datetime.now().time())[:-3])
+				else:  # Any other type of actuation that's not ours, simply collect data for 30s
+					w.droneId = 1
+					w.experiment_log.update(droneId=w.droneId)
+					w.cf_str_status = "{}_exp{}".format(self.EXPERIMENT_TYPE, self.EXPERIMENT_NUMBER)
+					self.curr_droneId_deadline = self.t_frame + timedelta(seconds=20)
+
 			# Check if 1s has passed so we stop logging for this drone
-			if self.curr_droneId_deadline is not None and datetime.now() > self.curr_droneId_deadline:
+			if self.curr_droneId_deadline is not None and self.t_frame > self.curr_droneId_deadline:
 				self.curr_droneId_deadline = None  # Make sure we don't enter this block again
 
 				if self.EXPERIMENT_TYPE != "Ours":  # Any type of actuation that's not ours collects data once and is done
-					return datetime.now()
+					return self.t_frame
 				else:  # On the other hand, our actuation needs to keep collecting for each drone and each iteration...
 					# Check if this is the last drone in this iteration
 					if self.next_droneId == 1:  # Equivalent to: w.droneId == self.NUM_WORKERS
-						self.curr_iter_deadline = datetime.now() + timedelta(seconds=1.5)  # Give it a couple seconds just in case before ending the iteration and saving logs
+						self.curr_iter_deadline = self.t_frame + timedelta(seconds=1.5)  # Give it a couple seconds just in case before ending the iteration and saving logs
 						w.command_info = None
 						w.cf_str_status = "Saving iteration {}...".format(self.experiment_iter)
 					else:
@@ -984,7 +977,7 @@ class Spotter:
 				w.experiment_log.update(droneId=w.droneId)
 
 			# Check if we should save the logs and move on to the next iteration
-			if self.curr_iter_deadline is not None and datetime.now() > self.curr_iter_deadline:
+			if self.curr_iter_deadline is not None and self.t_frame > self.curr_iter_deadline:
 				self.curr_iter_deadline = None  # Make sure we don't enter this block again
 
 				# Save the logs
@@ -997,8 +990,8 @@ class Spotter:
 				open("{}dataCollectionDone.txt".format(self.get_iteration_log_folder()), 'w').close()  # Create an empty file to signal Matlab to issue a new command
 
 				self.experiment_iter += 1
-				if self.experiment_iter > 30:  # End experiment after 30 iterations
-					return datetime.now()
+				if self.experiment_iter > 25:  # End experiment after 30 iterations
+					return self.t_frame
 				else:  # Start new logs
 					w.ini_logs("experiment{}/iteration{}".format(self.EXPERIMENT_NUMBER, self.experiment_iter), self.LOG_FOLDER)
 
@@ -1021,6 +1014,6 @@ class Spotter:
 
 
 if __name__ == '__main__':
-	s = Spotter(experiment_type="Random", experiment_number=1, starting_iter=1, bool_world_coords_pattern=True)
+	s = Spotter(experiment_type="Landed", experiment_number=1, starting_iter=1, bool_world_coords_pattern=True)
 	s.run_experiment(['radio://0/75/2M'])
 	print('Done')
