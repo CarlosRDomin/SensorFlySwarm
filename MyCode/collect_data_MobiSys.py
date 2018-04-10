@@ -114,7 +114,7 @@ class WorkerDrone:
 	PRINT_LOGS = False
 
 	def __init__(self, link_uri, experiment_start_datetime, log_folder=None):
-		self.cf_radio_ch = link_uri.split("/")[-2]  # Extract CF radio channel number from uri (eg: "radio://0/80/250K")
+		self.cf_radio_ch = 'usb' if link_uri.startswith('usb://') else link_uri.split("/")[-2]  # Extract CF radio channel number from uri (eg: "radio://0/80/250K")
 		self.experiment_log = None
 		self.ini_logs(experiment_start_datetime if log_folder is not None else "{}/{}".format(self.cf_radio_ch, experiment_start_datetime), log_folder if log_folder is not None else "log")
 		self.cf_log_attitude = self.cf_log_accel = self.cf_log_gyro = None
@@ -583,6 +583,10 @@ class Spotter:
 			if isinstance(connect_to, int):  # If connect_to is a number, choose first available link
 				link_uri = available_links[0][0]
 
+			if link_uri is None:
+				logging.warning("Warning, no Crazyflies found. Trying again in a second.")
+				time.sleep(1)
+				continue
 			logging.info("Initializing CrazyFlie (connecting to '{}').".format(link_uri))
 			self.workers.append(WorkerDrone(link_uri, "experiment{}{}".format(self.EXPERIMENT_NUMBER, "" if self.EXPERIMENT_TYPE!= "Ours" else "/iteration{}".format(self.experiment_iter)), self.LOG_FOLDER))
 
@@ -942,7 +946,7 @@ class Spotter:
 			if new_pos_world is not None: new_pos_world += w.POS_OFFSET  # Add offset to set custom {0,0,0} world origin
 			w.control_cf(new_pos_world, self.t_frame)
 
-			# Check if we should start logging for this drone
+			# Check if we should START LOGGING for this drone
 			if self.start_data_collection_deadline is not None and self.t_frame > self.start_data_collection_deadline:
 				self.start_data_collection_deadline = None  # Make sure we don't enter this block again
 
@@ -950,7 +954,7 @@ class Spotter:
 					w.droneId = self.next_droneId
 					w.experiment_log.update(droneId=w.droneId)
 					self.next_droneId = 1 + (self.next_droneId % self.NUM_WORKERS)
-					self.curr_droneId_deadline = datetime.now() + timedelta(seconds=2)
+					self.curr_droneId_deadline = datetime.now() + timedelta(seconds=1.5)
 					self.window_for_kb_input.title = "'{}' -> Drone {} flying (iter {}), at t={}".format('n', w.droneId, self.experiment_iter, str(datetime.now().time())[:-3])
 				else:  # Any other type of actuation that's not ours, simply collect data for 30s
 					w.droneId = 1
@@ -958,7 +962,7 @@ class Spotter:
 					w.cf_str_status = "{}_exp{}".format(self.EXPERIMENT_TYPE, self.EXPERIMENT_NUMBER)
 					self.curr_droneId_deadline = self.t_frame + timedelta(seconds=20)
 
-			# Check if 1s has passed so we stop logging for this drone
+			# Check if 1s has passed so we STOP LOGGING for this drone
 			if self.curr_droneId_deadline is not None and self.t_frame > self.curr_droneId_deadline:
 				self.curr_droneId_deadline = None  # Make sure we don't enter this block again
 
@@ -1014,6 +1018,6 @@ class Spotter:
 
 
 if __name__ == '__main__':
-	s = Spotter(experiment_type="Landed", experiment_number=1, starting_iter=1, bool_world_coords_pattern=True)
-	s.run_experiment(['radio://0/75/2M'])
+	s = Spotter(experiment_type="Ours", experiment_number=3, starting_iter=1, bool_world_coords_pattern=True)
+	s.run_experiment(['usb://0'])  # 'radio://0/75/2M'
 	print('Done')

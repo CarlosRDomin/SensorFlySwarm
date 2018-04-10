@@ -356,7 +356,7 @@ class WorkerDrone:
 			dt = (t_frame - self.cf_curr_pos_t).total_seconds()
 			if dt < self.MAX_INTERVAL_FOR_VEL_ESTIMATION:
 				# self.cf_curr_vel = self.VEL_ALPHA * self.cf_curr_vel + (1 - self.VEL_ALPHA) * (new_pos - self.cf_curr_pos) / dt
-				self.cf_curr_vel = plot_tools.DerivativeHelper.differentiate(self.cf_past_pos, self.cf_past_pos_t, win_size=self.VEL_DERIV_WIN_SIZE, poly_order=self.VEL_DERIV_POLY_ORDER, deriv=1)
+				self.cf_curr_vel = plot_tools.DerivativeHelper.differentiate(self.cf_past_pos, self.cf_past_pos_t, win_half_size=self.VEL_DERIV_WIN_SIZE, poly_order=self.VEL_DERIV_POLY_ORDER, deriv=1)
 				# self.send_cf_dr_update(True, self.cf_curr_vel[0], self.cf_curr_vel[1], self.cf_curr_vel[2], self.cnt_iteration)
 				str_debug_vel = "vx={v[0]:.2f}m/s, vy={v[1]:.2f}m/s, vz={v[2]:.2f}m/s".format(v=self.cf_curr_vel)
 			else:  # Haven't tracked the worker for some time, so I shouldn't use past information to estimate velocity in the (near) future
@@ -583,7 +583,7 @@ class Spotter:
 	COLOR_LINE_UNTRACKED = (0, 0, 255)
 	COLOR_TARGET_TRACKED = (0, 255, 0)
 	COLOR_TARGET_UNTRACKED = (0, 0, 255)
-	SETTINGS_ENVIRONMENT = "Yosemite room"
+	SETTINGS_ENVIRONMENT = "Secret lab"
 	CAMERA_SETTINGS_FILE = "config/cam_settings/Camera settings - USB 2.0 Camera - {}.txt".format(SETTINGS_ENVIRONMENT)
 	COLOR_THRESH_SETTINGS_FILE = "config/color_thresh/Color threshold settings - {}.txt".format(SETTINGS_ENVIRONMENT)
 	BLOB_DETECTOR_SETTINGS_FILE = "config/blob_detector/Blob detector settings.txt"

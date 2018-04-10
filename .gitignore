@@ -10,3 +10,4 @@ MyCode/cam_calibration/cam_calibration_input_*
 *.idea
 *.tar.gz
 *.pyc
+*.DS_Store
