@@ -4,11 +4,16 @@
 	P/I/D terms, output value...) as a function of time. Also allows to save the logs and figures to a file.
 """
 
-import os
-import numpy as np
+import matplotlib
+matplotlib.use('QT5Agg')  # Needs to come before importing pyplot!
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 import matplotlib.dates as mdates
+import numpy as np
 import PID
+import os
+from multiprocessing import Process, Pipe
+from collections import deque
 from datetime import datetime, timedelta
 
 
@@ -99,7 +104,7 @@ class MagnitudeLog (object):
 			plt.ion()
 			ax1.xaxis.set_major_formatter(mdates.DateFormatter('%M:%S'))
 			fig.autofmt_xdate()  # Tilt x-ticks to be more readable
-		figManager = plt.get_current_fig_manager()
+		# figManager = plt.get_current_fig_manager()
 		# figManager.window.showMaximized()
 		fig.set_tight_layout(True)
 		fig.show()
@@ -346,6 +351,7 @@ class ExperimentLog:
 		"""
 		plt.ion()
 		for m in self.magnitudes.itervalues():
+			print("Plotting: {}".format(m.str_magnitude))
 			m.plot()
 		if wait:
 			while not plt.waitforbuttonpress(timeout=5): pass  # Wait until a key is pressed (waitforbuttonpress will return True if a key was pressed, False if the mouse was clicked)
@@ -463,7 +469,86 @@ class DerivativeHelper:
 		return result
 
 
+class ProcessPlotter:
+	"""
+	This class is meant to be run in a separate process and allows plotting (using Matplotlib) while the main process performs other computations.
+	"""
+
+	def __init__(self, DELTA_T=3, y_lims=(None, None), interval=10, blit=True, plot_args=(), **plot_kwargs):
+		self.DELTA_T = DELTA_T  # We will plot all points in the last DELTA_T seconds
+		self.y_lims = y_lims  # List containing [y_lim_min, y_lim_max]
+		self.interval = interval  # How often (in ms) we want to update the plot
+		self.blit = blit  # Whether or not to use blit (technique for faster update)
+		self.plot_args = plot_args  # args to pass to plt.plot(). Eg: ('r.') would "scatter" red points
+		self.plot_kwargs = plot_kwargs  # kwargs to pass to plt.plot(). Eg: linewidth=2
+		self.t = deque()  # Store timestamps of datapoints
+		self.y = deque()  # Store the actual value of the datapoints
+		self.lastT = datetime.now()
+
+	def terminate(self):
+		plt.close(self.fig)
+		print('ProcessPlotter done!')
+
+	def update(self, _):
+		while self.pipe.poll():  # If there's available data points to read from the pipe
+			command = self.pipe.recv()  # Read data points from queue
+
+			if command is None:  # None is used to indicate this process to terminate
+				self.terminate()
+				return []
+			else:  # Otherwise, command should contain [timestamp, datapoint_value]
+				t, y = command
+
+				# Delete old data points (if necessary)
+				while len(self.t) > 0 and (t - self.t[0]).total_seconds() > self.DELTA_T:
+					self.t.popleft()
+					self.y.popleft()
+
+				# Add new data point
+				self.t.append(t)
+				self.y.append(y)
+		self.ax.set_xlim(self.t[0] if True else self.t[-1]-timedelta(seconds=self.DELTA_T), self.t[-1])  # Update x-axis lims
+
+		print('\tTook {:.2f}ms'.format((datetime.now() - self.lastT).total_seconds()*1000))
+		self.lastT = datetime.now()
+		return self.ax.plot(self.t, self.y, *self.plot_args, **self.plot_kwargs)
+
+	def __call__(self, pipe):
+		self.pipe = pipe
+		self.fig, self.ax = plt.subplots()
+		self.ax.set_ylim(self.y_lims[0], self.y_lims[1])
+
+		self.ani = FuncAnimation(self.fig, self.update, interval=self.interval, blit=self.blit)  # Use Matplotlib's Animation package to deal with iterative updates
+		plt.show()  # Show the figure (blocking call), returns when the figure is closed
+
+
+class ProcessPlotterHelper(object):
+	"""
+	This helper class creates a new ProcessPlotter and runs it in a new process (so that Matplotlib runs in parallel to the main process' computation)
+	"""
+
+	def __init__(self, *args, **kwargs):
+		self.plot_pipe, plotter_pipe = Pipe()  # Create a Pipe to communicate both processes
+		self.plotter = ProcessPlotter(*args, **kwargs)  # Forward args (and kwargs) to ProcessPlotter
+		self.plot_process = Process(target=self.plotter, args=(plotter_pipe,))  # Spawn a new process and run the ProcessPlotter in it
+		self.plot_process.daemon = True  # No need to wait for plot_process to finish in order to exit the whole execution
+		self.plot_process.start()
+
+	def add_point(self, point):
+		self.plot_pipe.send(point)  # Remember that point=None would terminate (close) the figure
+
+
 if __name__ == '__main__':
+	import time
+	import random
+
+	plot_helper = ProcessPlotterHelper(y_lims=[0, 1], plot_args=('b',), linewidth=3)
+	for ii in range(100):
+		plot_helper.add_point([datetime.now(), random.random()])
+		time.sleep(0.05)
+	plot_helper.add_point(None)
+	exit()
+
 	radio_ch = 80
 	experiment_start_datetime = "2017-02-05 11-37-15"
 	experiment_log = ExperimentLog("{}/{}".format(radio_ch, experiment_start_datetime), {"aX_raw": "mag", "aY_raw": "mag", "aZ_raw": "mag", "aX_world": "mag", "aY_world": "mag", "aZ_world": "mag", "pX_cam": "mag", "pY_cam": "mag", "pZ_cam": "mag", "vX_cam": "mag", "vY_cam": "mag", "vZ_cam": "mag", "aX_cam": "mag", "aY_cam": "mag", "aZ_cam": "mag"})
