@@ -474,8 +474,9 @@ class ProcessPlotter:
 	This class is meant to be run in a separate process and allows plotting (using Matplotlib) while the main process performs other computations.
 	"""
 
-	def __init__(self, DELTA_T=3, y_lims=(None, None), interval=10, blit=True, plot_args=(), **plot_kwargs):
+	def __init__(self, DELTA_T=3, fig_geom=None, y_lims=(None, None), interval=10, blit=True, plot_args=(), **plot_kwargs):
 		self.DELTA_T = DELTA_T  # We will plot all points in the last DELTA_T seconds
+		self.fig_geom = fig_geom  # Tuple containing (fig_x, fig_y, fig_w, fig_h) in pixels
 		self.y_lims = y_lims  # List containing [y_lim_min, y_lim_max]
 		self.interval = interval  # How often (in ms) we want to update the plot
 		self.blit = blit  # Whether or not to use blit (technique for faster update)
@@ -507,15 +508,24 @@ class ProcessPlotter:
 				# Add new data point
 				self.t.append(t)
 				self.y.append(y)
-		self.ax.set_xlim(self.t[0] if True else self.t[-1]-timedelta(seconds=self.DELTA_T), self.t[-1])  # Update x-axis lims
 
-		print('\tTook {:.2f}ms'.format((datetime.now() - self.lastT).total_seconds()*1000))
+		# Update x-axis lims
+		if False and len(self.t) > 0:
+			self.ax.set_xlim(self.t[0] if False else self.t[-1]-timedelta(seconds=self.DELTA_T), self.t[-1])
+		else:
+			now = datetime.now()
+			self.ax.set_xlim(now-timedelta(seconds=self.DELTA_T), now)
+
+		if False:
+			print('\tTook {:.2f}ms'.format((datetime.now() - self.lastT).total_seconds()*1000))
 		self.lastT = datetime.now()
 		return self.ax.plot(self.t, self.y, *self.plot_args, **self.plot_kwargs)
 
 	def __call__(self, pipe):
 		self.pipe = pipe
 		self.fig, self.ax = plt.subplots()
+		if self.fig_geom is not None:
+			plt.get_current_fig_manager().window.setGeometry(*self.fig_geom)
 		self.ax.set_ylim(self.y_lims[0], self.y_lims[1])
 
 		self.ani = FuncAnimation(self.fig, self.update, interval=self.interval, blit=self.blit)  # Use Matplotlib's Animation package to deal with iterative updates
