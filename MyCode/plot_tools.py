@@ -474,7 +474,8 @@ class ProcessPlotter:
 	This class is meant to be run in a separate process and allows plotting (using Matplotlib) while the main process performs other computations.
 	"""
 
-	def __init__(self, DELTA_T=3, fig_geom=None, y_lims=(None, None), interval=10, blit=True, plot_args=(), **plot_kwargs):
+	def __init__(self, num_plots=1, DELTA_T=3, fig_geom=None, y_lims=(None, None), interval=10, blit=True, plot_args=(), **plot_kwargs):
+		self.num_plots = num_plots  # Number of plots (lines) per subplot
 		self.DELTA_T = DELTA_T  # We will plot all points in the last DELTA_T seconds
 		self.fig_geom = fig_geom  # Tuple containing (fig_x, fig_y, fig_w, fig_h) in pixels
 		self.y_lims = y_lims  # List containing [y_lim_min, y_lim_max]
@@ -482,15 +483,23 @@ class ProcessPlotter:
 		self.blit = blit  # Whether or not to use blit (technique for faster update)
 		self.plot_args = plot_args  # args to pass to plt.plot(). Eg: ('r.') would "scatter" red points
 		self.plot_kwargs = plot_kwargs  # kwargs to pass to plt.plot(). Eg: linewidth=2
-		self.t = deque()  # Store timestamps of datapoints
-		self.y = deque()  # Store the actual value of the datapoints
+		self.t = [deque(), deque()]  # Store timestamps of datapoints
+		self.y = [deque(), deque()]  # Store the actual value of the datapoints
+		self.lines = []
 		self.lastT = datetime.now()
+
+	def extend_arg_list(self, arg):
+		if isinstance(arg, list):
+			return (arg*self.num_plots)[0:self.num_plots]
+		else:
+			return [arg]*self.num_plots
 
 	def terminate(self):
 		plt.close(self.fig)
 		print('ProcessPlotter done!')
 
 	def update(self, _):
+		now = datetime.now()
 		while self.pipe.poll():  # If there's available data points to read from the pipe
 			command = self.pipe.recv()  # Read data points from queue
 
@@ -498,28 +507,31 @@ class ProcessPlotter:
 				self.terminate()
 				return []
 			else:  # Otherwise, command should contain [timestamp, datapoint_value]
-				t, y = command
+				index, t, y = command
 
 				# Delete old data points (if necessary)
-				while len(self.t) > 0 and (t - self.t[0]).total_seconds() > self.DELTA_T:
-					self.t.popleft()
-					self.y.popleft()
+				for i in range(len(self.t)):
+					while len(self.t[i]) > 0 and (now - self.t[i][0]).total_seconds() > self.DELTA_T:
+						self.t[i].popleft()
+						self.y[i].popleft()
 
 				# Add new data point
-				self.t.append(t)
-				self.y.append(y)
+				self.t[index].append(t)
+				self.y[index].append(y)
+				self.lines[index].set_data(self.t[index], self.y[index])
 
 		# Update x-axis lims
-		if False and len(self.t) > 0:
-			self.ax.set_xlim(self.t[0] if False else self.t[-1]-timedelta(seconds=self.DELTA_T), self.t[-1])
-		else:
-			now = datetime.now()
-			self.ax.set_xlim(now-timedelta(seconds=self.DELTA_T), now)
+		self.ax.set_xlim(now-timedelta(seconds=self.DELTA_T), now)
 
-		if False:
+		if True:
 			print('\tTook {:.2f}ms'.format((datetime.now() - self.lastT).total_seconds()*1000))
 		self.lastT = datetime.now()
-		return self.ax.plot(self.t, self.y, *self.plot_args, **self.plot_kwargs)
+
+		# for l in self.lines:
+		# 	l.set_data(self.t[i], self.y[i])
+		# return [self.lines[1]]
+		return self.lines
+		# return self.ax.plot(self.t[0], self.y[0], *self.plot_args[0], **self.plot_kwargs)
 
 	def __call__(self, pipe):
 		self.pipe = pipe
@@ -527,6 +539,10 @@ class ProcessPlotter:
 		if self.fig_geom is not None:
 			plt.get_current_fig_manager().window.setGeometry(*self.fig_geom)
 		self.ax.set_ylim(self.y_lims[0], self.y_lims[1])
+		self.lines = []
+		for i in range(2):
+			l,_ = plt.plot([], [], *self.plot_args[i])
+			self.lines.append(l)
 
 		self.ani = FuncAnimation(self.fig, self.update, interval=self.interval, blit=self.blit)  # Use Matplotlib's Animation package to deal with iterative updates
 		plt.show()  # Show the figure (blocking call), returns when the figure is closed
@@ -549,6 +565,18 @@ class ProcessPlotterHelper(object):
 
 
 if __name__ == '__main__':
+	import time
+	import random
+
+	plot_helper = ProcessPlotterHelper(fig_geom=(0, 900, 1920, 300), y_lims=[0, 1], plot_args=[('r',), ('b.',)])
+	for ii in range(100):
+		plot_helper.add_point([0, datetime.now()+timedelta(seconds=random.random()/500), random.random()])
+		if ii % 3 == 0:
+			plot_helper.add_point([1, datetime.now()+timedelta(seconds=random.random()/500), random.random()])
+		time.sleep(0.05)
+	plot_helper.add_point(None)
+	exit()
+
 	import time
 	import random
 
